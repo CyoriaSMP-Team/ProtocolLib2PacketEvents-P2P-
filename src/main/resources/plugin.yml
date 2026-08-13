@@ -1,6 +1,13 @@
 name: ProtocolLib2PacketEvents
 main: com.comphenix.protocol.ProtocolLib
-version: 1.0.0
+# This plugin is a drop-in reimplementation of ProtocolLib's API. It must therefore
+# advertise the ProtocolLib API level it implements, not P2P's own release number:
+# PacketEvents 2.x (and PE-bundling plugins like GrimAC) call
+# Bukkit.getPluginManager().getPlugin("ProtocolLib") - which resolves to this plugin
+# through `provides` below - and refuse to enable any ProtocolLib older than v5.0.0,
+# because ProtocolLib 4.x is genuinely incompatible with PacketEvents 2.x. P2P's real
+# release version (1.0.0) is carried by the jar name and the GitHub releases.
+version: 5.4.0
 author: CyoriaSMP Team
 description: A drop-in ProtocolLib compatibility layer powered by PacketEvents.
 depend: [packetevents]

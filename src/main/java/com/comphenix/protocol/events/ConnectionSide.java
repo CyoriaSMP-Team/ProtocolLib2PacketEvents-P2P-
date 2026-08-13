@@ -19,16 +19,21 @@
  */
 package com.comphenix.protocol.events;
 
+/**
+ * Which direction a listener sees, mirroring ProtocolLib's {@code ConnectionSide}.
+ * Constant names match ProtocolLib exactly ({@code SERVER}/{@code CLIENT}/{@code BOTH})
+ * so plugins compiled against real ProtocolLib link unchanged.
+ */
 public enum ConnectionSide {
-    SERVER_SIDE,
-    CLIENT_SIDE,
+    SERVER,
+    CLIENT,
     BOTH;
 
     public boolean isForServer() {
-        return this == SERVER_SIDE || this == BOTH;
+        return this == SERVER || this == BOTH;
     }
 
     public boolean isForClient() {
-        return this == CLIENT_SIDE || this == BOTH;
+        return this == CLIENT || this == BOTH;
     }
 }
