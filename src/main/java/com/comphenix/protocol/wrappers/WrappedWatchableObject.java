@@ -1,0 +1,69 @@
+/*
+ * ProtocolLib2PacketEvents (P2P) - a drop-in ProtocolLib compatibility layer
+ * powered by PacketEvents.
+ *
+ * Copyright (C) 2026 CyoriaSMP Team
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package com.comphenix.protocol.wrappers;
+
+import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
+import com.github.retrooper.packetevents.protocol.entity.data.EntityDataType;
+
+/**
+ * A single entity metadata entry, mirroring ProtocolLib's {@code WrappedWatchableObject}.
+ * Wraps PacketEvents' {@link EntityData}, which carries the index, the typed serializer and
+ * the value together.
+ */
+public class WrappedWatchableObject {
+
+    private final EntityData<?> handle;
+
+    public WrappedWatchableObject(EntityData<?> handle) {
+        this.handle = handle;
+    }
+
+    /** The metadata index this entry occupies. */
+    public int getIndex() {
+        return handle.getIndex();
+    }
+
+    public Object getValue() {
+        return handle.getValue();
+    }
+
+    /**
+     * Replaces the value. The new value must match the entry's existing
+     * {@link EntityDataType}; PacketEvents will fail to serialize it otherwise.
+     */
+    @SuppressWarnings("unchecked")
+    public void setValue(Object value) {
+        ((EntityData<Object>) handle).setValue(value);
+    }
+
+    /** The PacketEvents serializer type for this entry. */
+    public EntityDataType<?> getType() {
+        return handle.getType();
+    }
+
+    public EntityData<?> getHandle() {
+        return handle;
+    }
+
+    @Override
+    public String toString() {
+        return "WrappedWatchableObject[index=" + getIndex() + ", value=" + getValue() + "]";
+    }
+}

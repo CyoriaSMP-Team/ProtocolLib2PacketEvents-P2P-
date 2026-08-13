@@ -1,0 +1,261 @@
+/*
+ * ProtocolLib2PacketEvents (P2P) - a drop-in ProtocolLib compatibility layer
+ * powered by PacketEvents.
+ *
+ * Copyright (C) 2026 CyoriaSMP Team
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package com.comphenix.protocol;
+
+import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
+import com.github.retrooper.packetevents.protocol.player.ClientVersion;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
+
+/**
+ * GENERATED FILE - DO NOT EDIT BY HAND.
+ * <p>
+ * Produced at build time by {@code src/generator/java/P2PPacketTypeGenerator.java}, which
+ * reflects over the {@code PacketType} class of the PacketEvents release this project is
+ * compiled against and emits one real {@code public static final PacketType} field per
+ * packet constant. That is what makes genuine ProtocolLib source compatibility possible -
+ * plugins written against
+ * {@code PacketType.Play.Server.ENTITY_ANIMATION} compile and link unchanged.
+ * <p>
+ * Regenerate simply by running the Maven build; bumping the PacketEvents dependency version
+ * automatically refreshes the constant set.
+ * <p>
+ * Each constant is resolved at classload against a registry built by reflecting over the
+ * PacketEvents version actually present at <em>runtime</em>. Because PacketEvents is a
+ * {@code provided} dependency, the runtime version can differ from the compile-time one. A
+ * constant that no longer exists at runtime resolves to a placeholder with a {@code null}
+ * handle rather than throwing during class initialization, so one removed packet cannot
+ * break the whole plugin. {@link #isSupported()} reports whether a constant is backed by a
+ * real runtime packet type.
+ */
+public final class PacketType {
+
+    private static final Logger LOGGER = Logger.getLogger("ProtocolLib2PacketEvents");
+
+    public enum Sender {
+        SERVER, CLIENT
+    }
+
+    public enum Protocol {
+        HANDSHAKING, STATUS, LOGIN, PLAY, CONFIGURATION
+    }
+
+    private static final Map<String, PacketType> BY_KEY = new ConcurrentHashMap<>();
+    private static final Map<PacketTypeCommon, PacketType> BY_HANDLE = new ConcurrentHashMap<>();
+
+    static {
+        PacketTypeRegistryBuilder.build(BY_KEY, BY_HANDLE);
+    }
+
+    private final Protocol protocol;
+    private final Sender sender;
+    private final String name;
+    private final PacketTypeCommon handle;
+
+    PacketType(Protocol protocol, Sender sender, String name, PacketTypeCommon handle) {
+        this.protocol = protocol;
+        this.sender = sender;
+        this.name = name;
+        this.handle = handle;
+    }
+
+    public Protocol getProtocol() {
+        return protocol;
+    }
+
+    public Sender getSender() {
+        return sender;
+    }
+
+    /** The bare packet constant name, e.g. {@code "ENTITY_ANIMATION"}. */
+    public String name() {
+        return name;
+    }
+
+    /** Alias of {@link #name()}, matching ProtocolLib's accessor style. */
+    public String getName() {
+        return name;
+    }
+
+    public boolean isClient() {
+        return sender == Sender.CLIENT;
+    }
+
+    public boolean isServer() {
+        return sender == Sender.SERVER;
+    }
+
+    /**
+     * Whether this constant is backed by a packet type in the PacketEvents build actually
+     * loaded at runtime. False only when the runtime PacketEvents is older/newer than the
+     * one this plugin was compiled against and no longer defines this packet.
+     */
+    public boolean isSupported() {
+        return handle != null;
+    }
+
+    /** The underlying PacketEvents packet type, or {@code null} if unsupported at runtime. */
+    public PacketTypeCommon toPacketEvents() {
+        return handle;
+    }
+
+    /** The wire packet id for the given protocol version, or {@code -1} if unsupported. */
+    public int getCurrentId(ClientVersion version) {
+        return handle == null ? -1 : handle.getId(version);
+    }
+
+    @Override
+    public String toString() {
+        return protocol + "." + sender + "." + name;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof PacketType)) {
+            return false;
+        }
+        PacketType other = (PacketType) o;
+        return protocol == other.protocol && sender == other.sender && name.equals(other.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return (protocol.hashCode() * 31 + sender.hashCode()) * 31 + name.hashCode();
+    }
+
+    /** Bridges a raw PacketEvents packet type back to its ProtocolLib-style constant. */
+    public static PacketType fromPacketEvents(PacketTypeCommon common) {
+        return common == null ? null : BY_HANDLE.get(common);
+    }
+
+    public static PacketType fromKey(Protocol protocol, Sender sender, String name) {
+        ensureInitialized();
+        return BY_KEY.get(key(protocol, sender, name));
+    }
+
+    public static Collection<PacketType> values() {
+        ensureInitialized();
+        return Collections.unmodifiableCollection(BY_KEY.values());
+    }
+
+    /**
+     * Forces every generated holder class to initialize.
+     * <p>
+     * The ProtocolLib-spelled aliases only enter the lookup tables when their holder class is
+     * initialized, and Java initializes a nested class lazily on first use. Without this, a
+     * name lookup or {@link #values()} call made before anything touched, say,
+     * {@code PacketType.Play.Client} would miss that phase's aliases entirely - so registry-wide
+     * queries force the holders first.
+     */
+    static void ensureInitialized() {
+        if (initialized) {
+            return;
+        }
+        synchronized (PacketType.class) {
+            if (initialized) {
+                return;
+            }
+            // Set before initializing: the holders' static initializers call back into reg(),
+            // and this flag keeps that re-entry from recursing.
+            initialized = true;
+            initHolders();
+        }
+    }
+
+    private static volatile boolean initialized;
+
+    private static void touch(Class<?> holder) {
+        try {
+            Class.forName(holder.getName(), true, holder.getClassLoader());
+        } catch (Throwable t) {
+            LOGGER.warning("Failed to initialize packet type holder " + holder.getName() + ": " + t);
+        }
+    }
+
+    static String key(Protocol protocol, Sender sender, String name) {
+        return protocol + "." + sender + "." + name;
+    }
+
+    /**
+     * Resolves a generated constant against the runtime registry. Never throws: an
+     * unresolvable constant degrades to an unsupported placeholder so that a single
+     * packet removed by a PacketEvents update cannot fail this class's initialization.
+     */
+    static PacketType reg(Protocol protocol, Sender sender, String name) {
+        PacketType existing = BY_KEY.get(key(protocol, sender, name));
+        if (existing != null) {
+            return existing;
+        }
+        LOGGER.warning("Packet type " + protocol + "." + sender + "." + name
+                + " is not present in the PacketEvents build loaded at runtime; "
+                + "listeners registered for it will never fire.");
+        PacketType placeholder = new PacketType(protocol, sender, name, null);
+        BY_KEY.put(key(protocol, sender, name), placeholder);
+        return placeholder;
+    }
+
+    /**
+     * Resolves a packet that ProtocolLib and PacketEvents spell differently. The returned
+     * constant is the very same instance as the PacketEvents-named one, so
+     * {@code PacketType.Play.Server.ANIMATION == PacketType.Play.Server.ENTITY_ANIMATION},
+     * and the ProtocolLib spelling is additionally registered for name-based lookups.
+     */
+    static PacketType regAlias(Protocol protocol, Sender sender, String protocolLibName, String packetEventsName) {
+        PacketType target = BY_KEY.get(key(protocol, sender, packetEventsName));
+        if (target == null) {
+            LOGGER.warning("Packet type " + protocol + "." + sender + "." + packetEventsName
+                    + " (ProtocolLib name: " + protocolLibName + ") is not present in the PacketEvents"
+                    + " build loaded at runtime; listeners registered for it will never fire.");
+            target = new PacketType(protocol, sender, packetEventsName, null);
+            BY_KEY.put(key(protocol, sender, packetEventsName), target);
+        }
+        BY_KEY.putIfAbsent(key(protocol, sender, protocolLibName), target);
+        return target;
+    }
+
+    static PacketType getOrThrow(Protocol protocol, Sender sender, String name) {
+        PacketType type = BY_KEY.get(key(protocol, sender, name));
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown " + protocol + "." + sender + " packet type: " + name);
+        }
+        return type;
+    }
+
+    static Collection<PacketType> valuesOf(Protocol protocol, Sender sender) {
+        List<PacketType> out = new ArrayList<>();
+        for (PacketType type : BY_KEY.values()) {
+            if (type.protocol == protocol && type.sender == sender) {
+                out.add(type);
+            }
+        }
+        return Collections.unmodifiableList(out);
+    }
+
+//__GENERATED_PHASES__
+}

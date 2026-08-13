@@ -1,0 +1,34 @@
+ProtocolLib2PacketEvents (P2P)
+Copyright (C) 2026 CyoriaSMP Team
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+Third-party components
+----------------------
+
+PacketEvents - https://github.com/retrooper/packetevents
+    Copyright (C) retrooper and contributors
+    Licensed under the GNU General Public License v3.
+    Not bundled: P2P declares it as a `provided` dependency and depends on the
+    PacketEvents plugin being installed separately at runtime.
+
+ProtocolLib - https://github.com/dmulloy2/ProtocolLib
+    Copyright (C) dmulloy2, Comphenix and contributors
+    Licensed under the GNU General Public License v2.
+    No ProtocolLib source code is included in this project. P2P independently
+    re-implements ProtocolLib's public API surface (package, class and constant
+    names) so that plugins compiled against ProtocolLib can link against P2P.
+    The file src/generator/resources/protocollib-aliases.tsv is a mapping table
+    of packet constant names, derived from ProtocolLib's public API declarations.

@@ -1,0 +1,12 @@
+name: ProtocolLib2PacketEvents
+main: com.comphenix.protocol.ProtocolLib
+version: 1.0.0
+author: CyoriaSMP Team
+description: A drop-in ProtocolLib compatibility layer powered by PacketEvents.
+depend: [packetevents]
+provides: [ProtocolLib]
+# Deliberately no `api-version`: this plugin's own code contains no version-specific
+# packet logic (all packet ID / field mapping is delegated to PacketEvents at runtime),
+# so it should be loadable across the full Minecraft version range PacketEvents itself
+# supports (verified from source: 1.7.2 through the latest supported release; see README).
+# Pinning api-version to one Bukkit API bucket would artificially narrow that range.
