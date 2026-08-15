@@ -20,11 +20,13 @@
 package com.comphenix.protocol.wrappers;
 
 import com.comphenix.protocol.reflect.EquivalentConverter;
+import com.comphenix.protocol.error.ReportType;
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import org.bukkit.entity.Player;
+import org.bukkit.OfflinePlayer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,13 +37,16 @@ import java.util.UUID;
  * Player profile handle, mirroring ProtocolLib's {@code WrappedGameProfile}.
  * Backed by PacketEvents' {@link UserProfile} rather than Mojang's authlib GameProfile.
  */
-public class WrappedGameProfile {
+public class WrappedGameProfile extends AbstractWrapper {
+
+    public static final ReportType REPORT_INVALID_UUID = new ReportType("Invalid UUID: %s");
 
     private final UserProfile handle;
     private final Multimap<String, WrappedSignedProperty> properties;
     private final ProfileHandle compatibilityHandle;
 
     private WrappedGameProfile(UserProfile handle) {
+        super(UserProfile.class);
         this.handle = handle;
         this.properties = ArrayListMultimap.create();
         List<TextureProperty> textureProperties = handle.getTextureProperties();
@@ -56,6 +61,16 @@ public class WrappedGameProfile {
 
     public WrappedGameProfile(UUID uuid, String name) {
         this(new UserProfile(uuid, name));
+    }
+
+    public WrappedGameProfile(String id, String name) {
+        this(id == null || id.isBlank() ? null : UUID.fromString(id), name);
+    }
+
+    public WrappedGameProfile(UUID uuid, String name, Multimap<String, WrappedSignedProperty> properties) {
+        this(uuid, name);
+        if (properties != null) this.properties.putAll(properties);
+        syncProperties();
     }
 
     public static WrappedGameProfile fromHandle(UserProfile profile) {
@@ -80,6 +95,10 @@ public class WrappedGameProfile {
     public static WrappedGameProfile fromPlayer(Player player) {
         return player == null ? null : new WrappedGameProfile(
                 new UserProfile(player.getUniqueId(), player.getName()));
+    }
+
+    public static WrappedGameProfile fromOfflinePlayer(OfflinePlayer player) {
+        return player == null ? null : new WrappedGameProfile(player.getUniqueId(), player.getName());
     }
 
     public UUID getUUID() {
@@ -109,6 +128,14 @@ public class WrappedGameProfile {
     /** A copy of this profile with a different UUID, leaving this instance untouched. */
     public WrappedGameProfile withId(UUID uuid) {
         return new WrappedGameProfile(new UserProfile(uuid, handle.getName(), textureProperties()));
+    }
+
+    public WrappedGameProfile withId(String id) {
+        return withId(id == null ? null : UUID.fromString(id));
+    }
+
+    public boolean isComplete() {
+        return getUUID() != null && getName() != null && !getName().isEmpty();
     }
 
     /** The binary-compatible ProtocolLib handle view. */

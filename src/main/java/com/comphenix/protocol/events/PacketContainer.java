@@ -43,8 +43,13 @@ import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.UUID;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * ProtocolLib-style handle around a single packet, mirroring {@code PacketContainer}.
@@ -65,38 +70,97 @@ import java.util.UUID;
  * {@link #getRawBuffer()} for direct byte-level access, but the typed accessors will report
  * zero fields; check {@link #hasStructuredAccess()} first.
  */
-public class PacketContainer {
+public class PacketContainer extends AbstractStructure implements java.io.Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private final PacketType type;
     private final PacketWrapper<?> handle;
+    private final Object nativeHandle;
+    private final StructureModifier<Object> suppliedModifier;
 
     public PacketContainer(PacketType type, PacketReceiveEvent event) {
         this.type = type;
         this.handle = decode(type, event, null);
+        this.nativeHandle = this.handle == null && event != null ? event.getByteBuf() : null;
+        this.suppliedModifier = null;
     }
 
     public PacketContainer(PacketType type, PacketSendEvent event) {
         this.type = type;
         this.handle = decode(type, null, event);
+        this.nativeHandle = this.handle == null && event != null ? event.getByteBuf() : null;
+        this.suppliedModifier = null;
     }
 
     public PacketContainer(PacketType type) {
         this.type = type;
         this.handle = allocate(type);
+        this.nativeHandle = null;
+        this.suppliedModifier = null;
     }
 
     public PacketContainer(PacketType type, PacketWrapper<?> handle) {
         this.type = type;
         this.handle = handle;
+        this.nativeHandle = null;
+        this.suppliedModifier = null;
+    }
+
+    /** Compatibility constructor for a native/NMS packet handle. */
+    public PacketContainer(PacketType type, Object handle) {
+        this.type = type;
+        this.handle = handle instanceof PacketWrapper<?> wrapper ? wrapper : null;
+        this.nativeHandle = handle instanceof PacketWrapper<?> ? null : handle;
+        this.suppliedModifier = null;
+    }
+
+    /** Compatibility constructor for a caller-supplied field model. */
+    public PacketContainer(PacketType type, Object handle, StructureModifier<Object> structure) {
+        this.type = type;
+        this.handle = handle instanceof PacketWrapper<?> wrapper ? wrapper : null;
+        this.nativeHandle = handle instanceof PacketWrapper<?> ? null : handle;
+        this.suppliedModifier = structure;
+    }
+
+    /** Serialization constructor retained for Java serialization frameworks. */
+    protected PacketContainer() {
+        this.type = null;
+        this.handle = null;
+        this.nativeHandle = null;
+        this.suppliedModifier = null;
+    }
+
+    public StructureModifier<InternalStructure> getStructures() {
+        return (StructureModifier<InternalStructure>) (StructureModifier<?>)
+                getModifier().withType(Object.class, (EquivalentConverter) InternalStructure.getConverter());
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<Optional<InternalStructure>> getOptionalStructures() {
+        return (StructureModifier<Optional<InternalStructure>>) (StructureModifier<?>)
+                getModifier().withType(Optional.class);
+    }
+
+    public <T> Optional<T> getMeta(String key) {
+        return PacketMetadata.get(this, key);
+    }
+
+    public <T> void setMeta(String key, T value) {
+        PacketMetadata.set(this, key, value);
+    }
+
+    public void removeMeta(String key) {
+        PacketMetadata.remove(this, key);
     }
 
     public PacketType getType() {
         return type;
     }
 
-    /** The underlying PacketEvents wrapper, or {@code null} for an unwrapped packet type. */
+    /** The underlying native handle when one is available, otherwise the PacketEvents wrapper. */
     public Object getHandle() {
-        return handle;
+        return nativeHandle != null ? nativeHandle : handle;
     }
 
     /** Internal PacketEvents-typed access used by the bridge itself. */
@@ -109,7 +173,12 @@ public class PacketContainer {
      * accessors are empty and {@link #getRawBuffer()} is the only way to reach the contents.
      */
     public boolean hasStructuredAccess() {
-        return handle != null;
+        if (handle != null) {
+            return true;
+        }
+        // A native packet object can be sent through the server's encoder, but a
+        // ByteBuf/byte[] is already wire data and must use the direct backend.
+        return nativeHandle != null && !isRawBuffer(nativeHandle);
     }
 
     /**
@@ -117,33 +186,36 @@ public class PacketContainer {
      * does not model. Returns {@code null} if the packet is not backed by a live buffer.
      */
     public Object getRawBuffer() {
-        return handle == null ? null : handle.buffer;
+        if (handle != null) {
+            return handle.buffer;
+        }
+        return nativeHandle != null && isRawBuffer(nativeHandle) ? nativeHandle : null;
     }
 
     // --- primitive modifiers ----------------------------------------------------------
 
     public StructureModifier<Object> getModifier() {
-        return new StructureModifier<>(handle, Object.class);
+        return suppliedModifier != null ? suppliedModifier : new StructureModifier<>(structureTarget(), Object.class);
     }
 
     public StructureModifier<Integer> getIntegers() {
-        return new StructureModifier<>(handle, int.class);
+        return new StructureModifier<>(structureTarget(), int.class);
     }
 
     public StructureModifier<Long> getLongs() {
-        return new StructureModifier<>(handle, long.class);
+        return new StructureModifier<>(structureTarget(), long.class);
     }
 
     public StructureModifier<Short> getShorts() {
-        return new StructureModifier<>(handle, short.class);
+        return new StructureModifier<>(structureTarget(), short.class);
     }
 
     public StructureModifier<Byte> getBytes() {
-        return new StructureModifier<>(handle, byte.class);
+        return new StructureModifier<>(structureTarget(), byte.class);
     }
 
     public StructureModifier<Float> getFloats() {
-        return new StructureModifier<>(handle, float.class);
+        return new StructureModifier<>(structureTarget(), float.class);
     }
 
     /** Singular alias present in older ProtocolLib releases. */
@@ -152,42 +224,42 @@ public class PacketContainer {
     }
 
     public StructureModifier<Double> getDoubles() {
-        return new StructureModifier<>(handle, double.class);
+        return new StructureModifier<>(structureTarget(), double.class);
     }
 
     public StructureModifier<Boolean> getBooleans() {
-        return new StructureModifier<>(handle, boolean.class);
+        return new StructureModifier<>(structureTarget(), boolean.class);
     }
 
     public StructureModifier<String> getStrings() {
-        return new StructureModifier<>(handle, String.class);
+        return new StructureModifier<>(structureTarget(), String.class);
     }
 
     public StructureModifier<UUID> getUUIDs() {
-        return new StructureModifier<>(handle, UUID.class);
+        return new StructureModifier<>(structureTarget(), UUID.class);
     }
 
     public StructureModifier<byte[]> getByteArrays() {
-        return new StructureModifier<>(handle, byte[].class);
+        return new StructureModifier<>(structureTarget(), byte[].class);
     }
 
     public StructureModifier<String[]> getStringArrays() {
-        return new StructureModifier<>(handle, String[].class);
+        return new StructureModifier<>(structureTarget(), String[].class);
     }
 
     public StructureModifier<int[]> getIntegerArrays() {
-        return new StructureModifier<>(handle, int[].class);
+        return new StructureModifier<>(structureTarget(), int[].class);
     }
 
     /** Every {@code List} field on the packet, untyped. */
     public StructureModifier<List<?>> getLists() {
-        return new StructureModifier<>(handle, List.class);
+        return new StructureModifier<>(structureTarget(), List.class);
     }
 
     public StructureModifier<List<Integer>> getIntLists() {
         @SuppressWarnings("unchecked")
         StructureModifier<List<Integer>> result = (StructureModifier<List<Integer>>) (StructureModifier<?>)
-                new StructureModifier<>(handle, List.class);
+                new StructureModifier<>(structureTarget(), List.class);
         return result;
     }
 
@@ -200,7 +272,7 @@ public class PacketContainer {
 
     /** Item stack fields, as PacketEvents item stacks (no Bukkit conversion). */
     public StructureModifier<ItemStack> getPacketEventsItemModifier() {
-        return new StructureModifier<>(handle, ItemStack.class);
+        return new StructureModifier<>(structureTarget(), ItemStack.class);
     }
 
     /** Chat component fields. */
@@ -233,7 +305,7 @@ public class PacketContainer {
     @SuppressWarnings("unchecked")
     public StructureModifier<List<WrappedDataValue>> getDataValueCollectionModifier() {
         return (StructureModifier<List<WrappedDataValue>>) (StructureModifier<?>)
-                new StructureModifier<>(handle, List.class, DataValueListConverter.INSTANCE);
+                new StructureModifier<>(structureTarget(), List.class, DataValueListConverter.INSTANCE);
     }
 
     /** Alias used by plugins that refer to a single metadata collection modifier. */
@@ -244,38 +316,38 @@ public class PacketContainer {
     @SuppressWarnings("unchecked")
     public StructureModifier<WrappedChatComponent[]> getChatComponentArrays() {
         return (StructureModifier<WrappedChatComponent[]>) (StructureModifier<?>)
-                new StructureModifier<>(handle, net.kyori.adventure.text.Component[].class,
+                new StructureModifier<>(structureTarget(), net.kyori.adventure.text.Component[].class,
                         ChatComponentArrayConverter.INSTANCE);
     }
 
     @SuppressWarnings("unchecked")
     public StructureModifier<ChunkCoordIntPair> getChunkCoordIntPairs() {
         return (StructureModifier<ChunkCoordIntPair>) (StructureModifier<?>)
-                new StructureModifier<>(handle, long.class, ChunkCoordIntPair.getConverter());
+                new StructureModifier<>(structureTarget(), long.class, ChunkCoordIntPair.getConverter());
     }
 
     @SuppressWarnings("unchecked")
     public StructureModifier<org.bukkit.entity.EntityType> getEntityTypeModifier() {
         return (StructureModifier<org.bukkit.entity.EntityType>) (StructureModifier<?>)
-                new StructureModifier<>(handle, EntityType.class, EntityTypeConverter.INSTANCE);
+                new StructureModifier<>(structureTarget(), EntityType.class, EntityTypeConverter.INSTANCE);
     }
 
     @SuppressWarnings("unchecked")
     public StructureModifier<List<org.bukkit.inventory.MerchantRecipe>> getMerchantRecipeLists() {
         return (StructureModifier<List<org.bukkit.inventory.MerchantRecipe>>) (StructureModifier<?>)
-                new StructureModifier<>(handle, List.class);
+                new StructureModifier<>(structureTarget(), List.class);
     }
 
     @SuppressWarnings("unchecked")
     public StructureModifier<List<org.bukkit.inventory.ItemStack>> getItemListModifier() {
         return (StructureModifier<List<org.bukkit.inventory.ItemStack>>) (StructureModifier<?>)
-                new StructureModifier<>(handle, List.class, ItemStackListConverter.INSTANCE);
+                new StructureModifier<>(structureTarget(), List.class, ItemStackListConverter.INSTANCE);
     }
 
     @SuppressWarnings("unchecked")
     public StructureModifier<org.bukkit.util.Vector> getVectors() {
         return (StructureModifier<org.bukkit.util.Vector>) (StructureModifier<?>)
-                new StructureModifier<>(handle, org.bukkit.util.Vector.class);
+                new StructureModifier<>(structureTarget(), org.bukkit.util.Vector.class);
     }
 
     public StructureModifier<EnumWrappers.Hand> getHands() {
@@ -286,11 +358,11 @@ public class PacketContainer {
         return convert(EnumWrappers.getItemSlotConverter());
     }
 
-    public StructureModifier<EnumWrappers.Direction0> getDirections() {
+    public StructureModifier<EnumWrappers.Direction> getDirections() {
         return convert(EnumWrappers.getDirectionConverter());
     }
 
-    public StructureModifier<EnumWrappers.Difficulty0> getDifficulties() {
+    public StructureModifier<EnumWrappers.Difficulty> getDifficulties() {
         return convert(EnumWrappers.getDifficultyConverter());
     }
 
@@ -300,18 +372,23 @@ public class PacketContainer {
 
     /** A modifier over an arbitrary field type. */
     public <T> StructureModifier<T> getSpecificModifier(Class<T> type) {
-        return new StructureModifier<>(handle, type);
+        return new StructureModifier<>(structureTarget(), type);
     }
 
     /** A modifier driven by a caller-supplied converter. */
     public <T> StructureModifier<T> convert(EquivalentConverter<T> converter) {
-        return new StructureModifier<>(handle, converter.getGenericType(), converter);
+        return new StructureModifier<>(structureTarget(), converter.getGenericType(), converter);
     }
 
     /** A deep-ish copy sharing no field references with this container's wrapper. */
     public PacketContainer shallowClone() {
-        if (handle == null) {
+        if (getHandle() == null) {
             return new PacketContainer(type, (PacketWrapper<?>) null);
+        }
+        if (nativeHandle != null) {
+            Object copy = cloneObject(nativeHandle);
+            return new PacketContainer(type, copy,
+                    new StructureModifier<>(copy, Object.class));
         }
         PacketContainer copy = new PacketContainer(type);
         StructureModifier<Object> source = getModifier();
@@ -320,6 +397,85 @@ public class PacketContainer {
             target.write(i, source.read(i));
         }
         return copy;
+    }
+
+    /** Best-effort deep copy of a packet graph, falling back to the shallow field model. */
+    public PacketContainer deepClone() {
+        if (getHandle() == null) {
+            return this;
+        }
+        if (nativeHandle != null) {
+            return new PacketContainer(type, cloneObject(nativeHandle), suppliedModifier);
+        }
+        return shallowClone();
+    }
+
+    /** PacketEvents-backed serialization hook; returns the live buffer when available. */
+    public Object serializeToBuffer() {
+        if (handle == null) {
+            return getRawBuffer();
+        }
+        try {
+            handle.write();
+            return handle.getBuffer();
+        } catch (RuntimeException ignored) {
+            return handle.getBuffer();
+        }
+    }
+
+    public static PacketContainer fromPacket(Object packet) {
+        if (packet instanceof PacketContainer container) {
+            return container;
+        }
+        PacketType type = PacketType.fromClass(packet == null ? null : packet.getClass());
+        return new PacketContainer(type, packet);
+    }
+
+    /** Creates an empty Netty buffer for callers that need to encode a raw packet. */
+    public static ByteBuf createPacketBuffer() {
+        return Unpooled.buffer(0);
+    }
+
+    /**
+     * Decodes a raw buffer through a registered PacketEvents stream codec when one exists.
+     * Without a codec the raw buffer is returned unchanged; callers can then route it through
+     * the direct backend, which is the only lossless operation for an unmodelled packet.
+     */
+    public static Object deserializeFromBuffer(PacketType packetType, Object buffer) {
+        if (buffer == null) return null;
+        Class<?> packetClass = packetType == null ? null
+                : com.comphenix.protocol.injector.packet.PacketRegistry.tryGetPacketClass(packetType).orElse(null);
+        com.comphenix.protocol.wrappers.WrappedStreamCodec codec = packetClass == null ? null
+                : com.comphenix.protocol.injector.packet.PacketRegistry.getStreamCodec(packetClass);
+        if (codec != null) return codec.decode(buffer);
+        if (buffer instanceof ByteBuf byteBuf) return byteBuf.copy();
+        return buffer;
+    }
+
+    public int getId() {
+        return type == null ? -1 : type.getCurrentId();
+    }
+
+    private Object structureTarget() {
+        return nativeHandle != null ? nativeHandle : handle;
+    }
+
+    private static boolean isRawBuffer(Object value) {
+        return value instanceof byte[] || value instanceof io.netty.buffer.ByteBuf
+                || value.getClass().getName().endsWith("ByteBuf");
+    }
+
+    private static Object cloneObject(Object value) {
+        if (value == null) return null;
+        if (value instanceof Cloneable) {
+            try {
+                java.lang.reflect.Method clone = value.getClass().getDeclaredMethod("clone");
+                clone.setAccessible(true);
+                return clone.invoke(value);
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return value;
     }
 
     @Override

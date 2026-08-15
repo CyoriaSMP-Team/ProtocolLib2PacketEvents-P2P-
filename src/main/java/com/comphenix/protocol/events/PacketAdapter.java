@@ -1,155 +1,160 @@
 /*
  * ProtocolLib2PacketEvents (P2P) - a drop-in ProtocolLib compatibility layer
  * powered by PacketEvents.
- *
- * Copyright (C) 2026 CyoriaSMP Team
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.comphenix.protocol.events;
 
 import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.injector.GamePhase;
 import org.bukkit.plugin.Plugin;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.Arrays;
 
-/**
- * Base class for packet listeners, mirroring ProtocolLib's {@code PacketAdapter}.
- * Subclasses override whichever of {@link #onPacketSending} / {@link #onPacketReceiving}
- * they care about; the other stays a no-op.
- */
+/** ProtocolLib listener adapter with the upstream constructor/builder surface. */
 public abstract class PacketAdapter implements PacketListener {
+    protected Plugin plugin;
+    protected ConnectionSide connectionSide;
+    protected ListeningWhitelist receivingWhitelist = ListeningWhitelist.EMPTY_WHITELIST;
+    protected ListeningWhitelist sendingWhitelist = ListeningWhitelist.EMPTY_WHITELIST;
 
-    private final Plugin plugin;
-    private final ListeningWhitelist sendingWhitelist;
-    private final ListeningWhitelist receivingWhitelist;
-
-    /**
-     * ProtocolLib's builder spelling is intentionally retained, including the historical
-     * {@code AdapterParameteters} typo, because several released plugins link to it directly.
-     */
-    public static AdapterParameteters params() {
-        return new AdapterParameteters();
-    }
-
-    public static AdapterParameteters params(PacketType... types) {
-        return new AdapterParameteters().types(types);
-    }
-
-    public static final class AdapterParameteters {
-        private Plugin plugin;
-        private ListenerPriority priority = ListenerPriority.NORMAL;
-        private ConnectionSide side = ConnectionSide.BOTH;
-        private PacketType[] types = new PacketType[0];
-
-        public AdapterParameteters plugin(Plugin plugin) {
-            this.plugin = plugin;
-            return this;
-        }
-
-        public AdapterParameteters listenerPriority(ListenerPriority priority) {
-            this.priority = priority == null ? ListenerPriority.NORMAL : priority;
-            return this;
-        }
-
-        public AdapterParameteters connectionSide(ConnectionSide side) {
-            this.side = side == null ? ConnectionSide.BOTH : side;
-            return this;
-        }
-
-        public AdapterParameteters types(PacketType... types) {
-            this.types = types == null ? new PacketType[0] : types.clone();
-            return this;
-        }
-
-        public AdapterParameteters optionAsync() {
-            return this;
-        }
-
-        public AdapterParameteters optionManualGamePhase() {
-            return this;
-        }
+    public PacketAdapter(AdapterParameteters params) {
+        this(require(params).plugin, require(params).connectionSide, require(params).listenerPriority,
+                require(params).gamePhase, require(params).options, require(params).packets);
     }
 
     public PacketAdapter(Plugin plugin, PacketType... types) {
-        this(plugin, ListenerPriority.NORMAL, ConnectionSide.BOTH, types);
+        this(params(plugin, types));
+    }
+
+    public PacketAdapter(Plugin plugin, Iterable<? extends PacketType> types) {
+        this(params(plugin, toArray(types)));
+    }
+
+    public PacketAdapter(Plugin plugin, ListenerPriority priority, Iterable<? extends PacketType> types) {
+        this(params(plugin, toArray(types)).listenerPriority(priority));
+    }
+
+    public PacketAdapter(Plugin plugin, ListenerPriority priority, Iterable<? extends PacketType> types,
+                         ListenerOptions... options) {
+        this(params(plugin, toArray(types)).listenerPriority(priority).options(options));
     }
 
     public PacketAdapter(Plugin plugin, ListenerPriority priority, PacketType... types) {
-        this(plugin, priority, ConnectionSide.BOTH, types);
+        this(params(plugin, types).listenerPriority(priority));
     }
 
+    /** Early P2P constructor retained for source compatibility. */
     public PacketAdapter(Plugin plugin, ConnectionSide side, PacketType... types) {
-        this(plugin, ListenerPriority.NORMAL, side, types);
+        this(params(plugin, types).connectionSide(side));
     }
 
+    /** Early P2P constructor retained for source compatibility. */
     public PacketAdapter(Plugin plugin, ListenerPriority priority, ConnectionSide side, PacketType... types) {
+        this(params(plugin, types).listenerPriority(priority).connectionSide(side));
+    }
+
+    private PacketAdapter(Plugin plugin, ConnectionSide side, ListenerPriority priority,
+                          GamePhase phase, ListenerOptions[] options, PacketType... packets) {
+        if (plugin == null || side == null || priority == null || phase == null || options == null || packets == null) {
+            throw new IllegalArgumentException("PacketAdapter parameters cannot be null");
+        }
         this.plugin = plugin;
-
-        Set<PacketType> serverTypes = new LinkedHashSet<>();
-        Set<PacketType> clientTypes = new LinkedHashSet<>();
-        for (PacketType type : types) {
-            if (type.getSender() == PacketType.Sender.SERVER) {
-                serverTypes.add(type);
-            } else {
-                clientTypes.add(type);
-            }
+        this.connectionSide = side;
+        if (side.isForServer()) {
+            sendingWhitelist = ListeningWhitelist.newBuilder()
+                    .priority(priority).gamePhase(phase).options(options).types(packets).build();
         }
-
-        this.sendingWhitelist = side.isForServer()
-                ? new ListeningWhitelist(priority, serverTypes)
-                : ListeningWhitelist.EMPTY;
-        this.receivingWhitelist = side.isForClient()
-                ? new ListeningWhitelist(priority, clientTypes)
-                : ListeningWhitelist.EMPTY;
-    }
-
-    public PacketAdapter(AdapterParameteters parameters) {
-        this(requireParameters(parameters).plugin,
-                parameters.priority,
-                parameters.side,
-                parameters.types);
-    }
-
-    private static AdapterParameteters requireParameters(AdapterParameteters parameters) {
-        if (parameters == null || parameters.plugin == null) {
-            throw new IllegalArgumentException("PacketAdapter parameters and plugin cannot be null");
+        if (side.isForClient()) {
+            receivingWhitelist = ListeningWhitelist.newBuilder()
+                    .priority(priority).gamePhase(phase).options(options).types(packets).build();
         }
-        return parameters;
     }
 
-    @Override
-    public void onPacketSending(PacketEvent event) {
+    private static AdapterParameteters require(AdapterParameteters params) {
+        if (params == null) throw new IllegalArgumentException("params cannot be null");
+        if (params.plugin == null) throw new IllegalStateException("Plugin was never set in parameters");
+        if (params.connectionSide == null) throw new IllegalStateException("Connection side was never set");
+        if (params.packets == null) throw new IllegalStateException("Packet types were never set");
+        return params;
+    }
+
+    private static PacketType[] toArray(Iterable<? extends PacketType> types) {
+        if (types == null) throw new IllegalArgumentException("types cannot be null");
+        java.util.ArrayList<PacketType> list = new java.util.ArrayList<>();
+        for (PacketType type : types) list.add(type);
+        return list.toArray(new PacketType[0]);
+    }
+
+    public static String getPluginName(PacketListener listener) {
+        return listener == null ? "UNKNOWN" : getPluginName(listener.getPlugin());
+    }
+
+    public static String getPluginName(Plugin plugin) {
+        if (plugin == null) return "UNKNOWN";
+        try { return plugin.getName(); } catch (Throwable ignored) { return plugin.toString(); }
+    }
+
+    public static AdapterParameteters params() { return new AdapterParameteters(); }
+
+    public static AdapterParameteters params(Plugin plugin, PacketType... packets) {
+        return new AdapterParameteters().plugin(plugin).types(packets);
     }
 
     @Override
     public void onPacketReceiving(PacketEvent event) {
+        throw new IllegalStateException("Override onPacketReceiving to receive packet events");
     }
 
     @Override
-    public ListeningWhitelist getSendingWhitelist() {
-        return sendingWhitelist;
+    public void onPacketSending(PacketEvent event) {
+        throw new IllegalStateException("Override onPacketSending to receive packet events");
     }
 
-    @Override
-    public ListeningWhitelist getReceivingWhitelist() {
-        return receivingWhitelist;
-    }
+    @Override public ListeningWhitelist getReceivingWhitelist() { return receivingWhitelist; }
+    @Override public ListeningWhitelist getSendingWhitelist() { return sendingWhitelist; }
+    @Override public Plugin getPlugin() { return plugin; }
 
     @Override
-    public Plugin getPlugin() {
-        return plugin;
+    public String toString() {
+        return "PacketAdapter[plugin=" + getPluginName(this) + ", sending=" + sendingWhitelist
+                + ", receiving=" + receivingWhitelist + "]";
+    }
+
+    public static class AdapterParameteters {
+        private Plugin plugin;
+        private ConnectionSide connectionSide = ConnectionSide.BOTH;
+        private PacketType[] packets = new PacketType[0];
+        private GamePhase gamePhase = GamePhase.PLAYING;
+        private ListenerOptions[] options = new ListenerOptions[0];
+        private ListenerPriority listenerPriority = ListenerPriority.NORMAL;
+
+        public AdapterParameteters plugin(Plugin plugin) { this.plugin = plugin; return this; }
+        public AdapterParameteters types(PacketType... packets) { this.packets = packets == null ? null : packets.clone(); return this; }
+        public AdapterParameteters connectionSide(ConnectionSide side) { this.connectionSide = side; return this; }
+        public AdapterParameteters clientSide() { this.connectionSide = ConnectionSide.add(connectionSide, ConnectionSide.CLIENT_SIDE); return this; }
+        public AdapterParameteters serverSide() { this.connectionSide = ConnectionSide.add(connectionSide, ConnectionSide.SERVER_SIDE); return this; }
+        public AdapterParameteters listenerPriority(ListenerPriority priority) { this.listenerPriority = priority; return this; }
+        public AdapterParameteters gamePhase(GamePhase phase) { this.gamePhase = phase; return this; }
+        public AdapterParameteters loginPhase() { this.gamePhase = GamePhase.LOGIN; return this; }
+        public AdapterParameteters options(ListenerOptions... options) { this.options = options == null ? null : options.clone(); return this; }
+        public AdapterParameteters options(java.util.Set<? extends ListenerOptions> options) {
+            this.options = options == null ? null : options.toArray(new ListenerOptions[0]); return this;
+        }
+        public AdapterParameteters options(java.util.Collection<ListenerOptions> options) {
+            this.options = options == null ? null : options.toArray(new ListenerOptions[0]); return this;
+        }
+        public AdapterParameteters optionAsync() { return mergeOptions(ListenerOptions.ASYNC); }
+        public AdapterParameteters optionSync() { return mergeOptions(ListenerOptions.SYNC); }
+        public AdapterParameteters optionManualGamePhase() { return mergeOptions(ListenerOptions.DISABLE_GAMEPHASE_DETECTION); }
+        public AdapterParameteters mergeOptions(ListenerOptions... additions) {
+            java.util.ArrayList<ListenerOptions> merged = new java.util.ArrayList<>();
+            if (options != null) merged.addAll(Arrays.asList(options));
+            if (additions != null) merged.addAll(Arrays.asList(additions));
+            options = merged.toArray(new ListenerOptions[0]);
+            return this;
+        }
+        public AdapterParameteters types(java.util.Set<PacketType> packets) {
+            this.packets = packets == null ? null : packets.toArray(new PacketType[0]); return this;
+        }
     }
 }

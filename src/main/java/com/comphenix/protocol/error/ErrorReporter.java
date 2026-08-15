@@ -19,6 +19,10 @@
  */
 package com.comphenix.protocol.error;
 
+import org.bukkit.plugin.Plugin;
+
+import com.comphenix.protocol.error.Report.ReportBuilder;
+
 public interface ErrorReporter {
 
     void reportMinimal(Object sender, String methodName, Throwable error);
@@ -28,4 +32,40 @@ public interface ErrorReporter {
     void reportWarning(Object sender, String message, Throwable error);
 
     void reportDetailed(Object sender, String message, Throwable error);
+
+    default void reportMinimal(Plugin sender, String methodName, Throwable error) {
+        reportMinimal((Object) sender, methodName, error);
+    }
+
+    default void reportMinimal(Plugin sender, String methodName, Throwable error, Object... parameters) {
+        reportMinimal((Object) sender, methodName + formatParameters(parameters), error);
+    }
+
+    default void reportDebug(Object sender, Report report) {
+        if (report != null) reportWarning(sender, report.getReportMessage(), report.getException());
+    }
+
+    default void reportDebug(Object sender, ReportBuilder builder) {
+        reportDebug(sender, builder == null ? null : builder.build());
+    }
+
+    default void reportWarning(Object sender, Report report) {
+        if (report != null) reportWarning(sender, report.getReportMessage(), report.getException());
+    }
+
+    default void reportWarning(Object sender, ReportBuilder builder) {
+        reportWarning(sender, builder == null ? null : builder.build());
+    }
+
+    default void reportDetailed(Object sender, Report report) {
+        if (report != null) reportDetailed(sender, report.getReportMessage(), report.getException());
+    }
+
+    default void reportDetailed(Object sender, ReportBuilder builder) {
+        reportDetailed(sender, builder == null ? null : builder.build());
+    }
+
+    private static String formatParameters(Object[] parameters) {
+        return parameters == null || parameters.length == 0 ? "" : " " + java.util.Arrays.toString(parameters);
+    }
 }

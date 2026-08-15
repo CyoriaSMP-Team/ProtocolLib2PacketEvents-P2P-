@@ -67,6 +67,12 @@ public class BlockPosition {
         return new BlockPosition(x - other.x, y - other.y, z - other.z);
     }
 
+    public BlockPosition multiply(int factor) { return new BlockPosition(x * factor, y * factor, z * factor); }
+    public BlockPosition divide(int divisor) {
+        if (divisor == 0) throw new ArithmeticException("divisor is zero");
+        return new BlockPosition(x / divisor, y / divisor, z / divisor);
+    }
+
     public Vector toVector() {
         return new Vector(x, y, z);
     }

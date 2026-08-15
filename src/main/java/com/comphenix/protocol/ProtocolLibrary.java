@@ -20,20 +20,31 @@
 package com.comphenix.protocol;
 
 import com.comphenix.protocol.error.ErrorReporter;
+import com.comphenix.protocol.scheduler.ProtocolScheduler;
+import org.bukkit.plugin.Plugin;
 
 /**
  * Static entry point mirroring ProtocolLib's own {@code ProtocolLibrary}. Populated by
  * {@link ProtocolLib#onEnable()} - calling any getter before the plugin has enabled
  * throws {@link IllegalStateException}, exactly like the real ProtocolLib.
  */
-public final class ProtocolLibrary {
+public class ProtocolLibrary {
 
+    public static final String MINIMUM_MINECRAFT_VERSION = "1.8";
+    public static final String MAXIMUM_MINECRAFT_VERSION = "26.2";
+    public static final String MINECRAFT_LAST_RELEASE_DATE = "2026-06-16";
+
+    private static volatile Plugin plugin;
+    private static volatile ProtocolConfig config;
     private static volatile ProtocolManager protocolManager;
+    private static volatile ProtocolScheduler scheduler;
     private static volatile AsynchronousManager asynchronousManager;
     private static volatile ErrorReporter errorReporter;
     private static volatile String version;
+    private static volatile boolean updatesDisabled;
+    private static volatile boolean initialized;
 
-    private ProtocolLibrary() {
+    public ProtocolLibrary() {
     }
 
     static void init(ProtocolManager protocolManager, AsynchronousManager asynchronousManager,
@@ -44,12 +55,55 @@ public final class ProtocolLibrary {
         ProtocolLibrary.version = version;
     }
 
+    protected static void init(Plugin plugin, ProtocolConfig config, ProtocolManager manager,
+                               ProtocolScheduler scheduler, ErrorReporter reporter) {
+        if (initialized) {
+            throw new IllegalStateException("ProtocolLib has already been initialized.");
+        }
+        ProtocolLibrary.plugin = plugin;
+        ProtocolLibrary.config = config;
+        ProtocolLibrary.protocolManager = manager;
+        ProtocolLibrary.scheduler = scheduler;
+        ProtocolLibrary.errorReporter = reporter;
+        initialized = true;
+    }
+
+    public static Plugin getPlugin() {
+        return plugin;
+    }
+
+    public static ProtocolConfig getConfig() {
+        return config;
+    }
+
+    public static ProtocolScheduler getScheduler() {
+        return scheduler;
+    }
+
+    public static void disableUpdates() {
+        updatesDisabled = true;
+    }
+
+    public static boolean updatesDisabled() {
+        return updatesDisabled;
+    }
+
+    static void attachRuntime(AsynchronousManager asynchronousManager, String version) {
+        ProtocolLibrary.asynchronousManager = asynchronousManager;
+        ProtocolLibrary.version = version;
+    }
+
     /** Clears the statics on plugin disable so a reload cannot hand out stale managers. */
     static void shutdown() {
+        initialized = false;
+        plugin = null;
+        config = null;
         protocolManager = null;
+        scheduler = null;
         asynchronousManager = null;
         errorReporter = null;
         version = null;
+        updatesDisabled = false;
     }
 
     public static ProtocolManager getProtocolManager() {

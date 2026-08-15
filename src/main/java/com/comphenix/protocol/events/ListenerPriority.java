@@ -28,19 +28,26 @@ import com.github.retrooper.packetevents.event.PacketListenerPriority;
  * internal state-tracking listener but after everything at NORMAL and below.
  */
 public enum ListenerPriority {
-    LOWEST(PacketListenerPriority.LOWEST),
-    LOW(PacketListenerPriority.LOW),
-    NORMAL(PacketListenerPriority.NORMAL),
-    HIGH(PacketListenerPriority.HIGH),
-    MONITOR(PacketListenerPriority.MONITOR);
+    LOWEST(0, PacketListenerPriority.LOWEST),
+    LOW(1, PacketListenerPriority.LOW),
+    NORMAL(2, PacketListenerPriority.NORMAL),
+    HIGH(3, PacketListenerPriority.HIGH),
+    HIGHEST(4, PacketListenerPriority.HIGHEST),
+    MONITOR(5, PacketListenerPriority.MONITOR);
 
+    private final int slot;
     private final PacketListenerPriority packetEventsPriority;
 
-    ListenerPriority(PacketListenerPriority packetEventsPriority) {
+    ListenerPriority(int slot, PacketListenerPriority packetEventsPriority) {
+        this.slot = slot;
         this.packetEventsPriority = packetEventsPriority;
     }
 
     public PacketListenerPriority toPacketEvents() {
         return packetEventsPriority;
+    }
+
+    public int getSlot() {
+        return slot;
     }
 }

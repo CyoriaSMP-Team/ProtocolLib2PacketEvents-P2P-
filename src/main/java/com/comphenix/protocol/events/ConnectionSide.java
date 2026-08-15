@@ -19,21 +19,40 @@
  */
 package com.comphenix.protocol.events;
 
+import com.comphenix.protocol.PacketType;
+
 /**
  * Which direction a listener sees, mirroring ProtocolLib's {@code ConnectionSide}.
- * Constant names match ProtocolLib exactly ({@code SERVER}/{@code CLIENT}/{@code BOTH})
- * so plugins compiled against real ProtocolLib link unchanged.
+ * Constant names match ProtocolLib exactly. The short aliases are retained for
+ * compatibility with the first P2P release.
  */
 public enum ConnectionSide {
-    SERVER,
-    CLIENT,
+    SERVER_SIDE,
+    CLIENT_SIDE,
     BOTH;
 
+    @Deprecated public static final ConnectionSide SERVER = SERVER_SIDE;
+    @Deprecated public static final ConnectionSide CLIENT = CLIENT_SIDE;
+
     public boolean isForServer() {
-        return this == SERVER || this == BOTH;
+        return this == SERVER_SIDE || this == BOTH;
     }
 
     public boolean isForClient() {
-        return this == CLIENT || this == BOTH;
+        return this == CLIENT_SIDE || this == BOTH;
+    }
+
+    public PacketType.Sender getSender() {
+        if (this == SERVER_SIDE) return PacketType.Sender.SERVER;
+        if (this == CLIENT_SIDE) return PacketType.Sender.CLIENT;
+        return null;
+    }
+
+    public static ConnectionSide add(ConnectionSide first, ConnectionSide second) {
+        if (first == null) return second;
+        if (second == null) return first;
+        boolean server = first.isForServer() || second.isForServer();
+        boolean client = first.isForClient() || second.isForClient();
+        return server && client ? BOTH : server ? SERVER_SIDE : CLIENT_SIDE;
     }
 }

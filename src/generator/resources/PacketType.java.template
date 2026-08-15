@@ -19,8 +19,11 @@
  */
 package com.comphenix.protocol;
 
+import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.protocol.packettype.PacketTypeCommon;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
+import com.comphenix.protocol.events.ConnectionSide;
+import com.comphenix.protocol.utility.MinecraftVersion;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -51,17 +54,41 @@ import java.util.logging.Logger;
  * break the whole plugin. {@link #isSupported()} reports whether a constant is backed by a
  * real runtime packet type.
  */
-public final class PacketType {
+public class PacketType implements java.io.Serializable, Cloneable, Comparable<PacketType> {
+
+    public static final int UNKNOWN_PACKET = -1;
 
     private static final Logger LOGGER = Logger.getLogger("ProtocolLib2PacketEvents");
 
     public enum Sender {
         SERVER, CLIENT
+
+        ;
+        public ConnectionSide toSide() {
+            return this == CLIENT ? ConnectionSide.CLIENT_SIDE : ConnectionSide.SERVER_SIDE;
+        }
+        public String getPacketName() { return name(); }
+        public String getMcpPacketName() { return name(); }
+        public String getMojangName() { return name(); }
     }
 
     public enum Protocol {
-        HANDSHAKING, STATUS, LOGIN, PLAY, CONFIGURATION
+        HANDSHAKING, STATUS, LOGIN, PLAY, CONFIGURATION, UNKNOWN
+
+        ;
+        public static Protocol fromVanilla(Enum<?> value) {
+            if (value == null) return UNKNOWN;
+            try { return valueOf(value.name().toUpperCase(java.util.Locale.ROOT)); }
+            catch (IllegalArgumentException ignored) { return UNKNOWN; }
+        }
+        public String getPacketName() { return name(); }
+        public String getMojangName() { return name(); }
+        public String getMcpPacketName() { return name(); }
     }
+
+    @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+    @java.lang.annotation.Target(java.lang.annotation.ElementType.FIELD)
+    public @interface ForceAsync { }
 
     private static final Map<String, PacketType> BY_KEY = new ConcurrentHashMap<>();
     private static final Map<PacketTypeCommon, PacketType> BY_HANDLE = new ConcurrentHashMap<>();
@@ -72,14 +99,39 @@ public final class PacketType {
 
     private final Protocol protocol;
     private final Sender sender;
-    private final String name;
+    private String name;
     private final PacketTypeCommon handle;
+    private final int currentId;
+    private final MinecraftVersion currentVersion;
+    private final List<String> classNames;
+    private boolean deprecated;
+    private boolean forceAsync;
 
     PacketType(Protocol protocol, Sender sender, String name, PacketTypeCommon handle) {
         this.protocol = protocol;
         this.sender = sender;
         this.name = name;
         this.handle = handle;
+        this.currentId = -1;
+        this.currentVersion = null;
+        this.classNames = java.util.Collections.singletonList(
+                handle == null || handle.getWrapperClass() == null ? name : handle.getWrapperClass().getName());
+    }
+
+    public PacketType(Protocol protocol, Sender sender, int currentId, String... classNames) {
+        this(protocol, sender, currentId, null, classNames);
+    }
+
+    public PacketType(Protocol protocol, Sender sender, int currentId,
+                      MinecraftVersion currentVersion, String... classNames) {
+        this.protocol = protocol;
+        this.sender = sender;
+        this.name = classNames != null && classNames.length > 0 ? classNames[0] : "UNKNOWN";
+        this.handle = null;
+        this.currentId = currentId;
+        this.currentVersion = currentVersion;
+        this.classNames = classNames == null ? java.util.Collections.emptyList()
+                : java.util.Collections.unmodifiableList(java.util.Arrays.asList(classNames.clone()));
     }
 
     public Protocol getProtocol() {
@@ -114,7 +166,7 @@ public final class PacketType {
      * one this plugin was compiled against and no longer defines this packet.
      */
     public boolean isSupported() {
-        return handle != null;
+        return handle != null || currentId != UNKNOWN_PACKET;
     }
 
     /** The underlying PacketEvents packet type, or {@code null} if unsupported at runtime. */
@@ -125,6 +177,33 @@ public final class PacketType {
     /** The wire packet id for the given protocol version, or {@code -1} if unsupported. */
     public int getCurrentId(ClientVersion version) {
         return handle == null ? -1 : handle.getId(version);
+    }
+
+    /**
+     * Returns the current server-side packet id.  ProtocolLib kept this deprecated accessor
+     * for a long time; retaining it is important for old plugins even though ids are versioned.
+     */
+    @Deprecated
+    public int getCurrentId() {
+        try {
+            return getCurrentId(PacketEvents.getAPI().getServerManager().getVersion().toClientVersion());
+        } catch (Throwable ignored) {
+            return currentId;
+        }
+    }
+
+    public List<String> getClassNames() { return classNames; }
+    void setName(String name) { this.name = name; }
+    void setDeprecated() { this.deprecated = true; }
+    void forceAsync() { this.forceAsync = true; }
+    public boolean isDeprecated() { return deprecated; }
+    public boolean isAsyncForced() { return forceAsync; }
+    public MinecraftVersion getCurrentVersion() { return currentVersion; }
+    public boolean isDynamic() { return currentId == UNKNOWN_PACKET && handle == null; }
+
+    /** PacketEvents' wrapper class used as the portable packet-class identity. */
+    public Class<?> getPacketClass() {
+        return handle == null ? null : handle.getWrapperClass();
     }
 
     @Override
@@ -154,14 +233,93 @@ public final class PacketType {
         return common == null ? null : BY_HANDLE.get(common);
     }
 
+    /** Best-effort lookup for wrappers or native packet classes supplied by integrations. */
+    @Deprecated
+    public static PacketType fromClass(Class<?> packetClass) {
+        if (packetClass == null) {
+            throw new IllegalArgumentException("packetClass cannot be null");
+        }
+        ensureInitialized();
+        for (PacketType type : BY_KEY.values()) {
+            Class<?> candidate = type.getPacketClass();
+            if (candidate != null && (candidate == packetClass || candidate.isAssignableFrom(packetClass))) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("Class " + packetClass.getName() + " is not a registered packet.");
+    }
+
+    public static Collection<PacketType> fromName(String name) {
+        if (name == null) {
+            return Collections.emptyList();
+        }
+        ensureInitialized();
+        List<PacketType> result = new ArrayList<>();
+        for (PacketType type : BY_KEY.values()) {
+            if (name.equalsIgnoreCase(type.name)) {
+                result.add(type);
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
     public static PacketType fromKey(Protocol protocol, Sender sender, String name) {
         ensureInitialized();
         return BY_KEY.get(key(protocol, sender, name));
     }
 
-    public static Collection<PacketType> values() {
+    public static Iterable<PacketType> values() {
         ensureInitialized();
         return Collections.unmodifiableCollection(BY_KEY.values());
+    }
+
+    public static PacketType findLegacy(int id) { return null; }
+    public static PacketType findLegacy(int id, Sender sender) { return null; }
+    public static boolean hasLegacy(int id) { return false; }
+    public static PacketType findCurrent(Protocol protocol, Sender sender, int id) {
+        for (PacketType type : valuesOf(protocol, sender)) if (type.getCurrentId() == id) return type;
+        return null;
+    }
+    public static PacketType findCurrent(Protocol protocol, Sender sender, String name) {
+        return fromKey(protocol, sender, name);
+    }
+    public static boolean hasCurrent(Protocol protocol, Sender sender, int id) {
+        return findCurrent(protocol, sender, id) != null;
+    }
+    public static PacketType fromID(Protocol protocol, Sender sender, int id, Class<?> packetClass) {
+        PacketType result = findCurrent(protocol, sender, id);
+        return result == null || packetClass == null || result.getPacketClass() == null
+                || result.getPacketClass().isAssignableFrom(packetClass) ? result : null;
+    }
+    public static PacketType fromCurrent(Protocol protocol, Sender sender, int id, Class<?> packetClass) {
+        return fromID(protocol, sender, id, packetClass);
+    }
+    public static boolean hasClass(Class<?> packetClass) {
+        if (packetClass == null) return false;
+        for (PacketType type : values()) {
+            if (type.getPacketClass() != null && type.getPacketClass().isAssignableFrom(packetClass)) return true;
+        }
+        return false;
+    }
+    public static void scheduleRegister(PacketType type, String name) { }
+    public static PacketTypeEnum getObjectEnum(PacketType type) {
+        PacketTypeEnum result = new PacketTypeEnum();
+        if (type != null) result.registerMember(type, type.name());
+        return result;
+    }
+
+    @Override
+    public PacketType clone() {
+        if (handle != null) return new PacketType(protocol, sender, name, handle);
+        return new PacketType(protocol, sender, currentId, currentVersion, classNames.toArray(new String[0]));
+    }
+
+    @Override public int compareTo(PacketType other) {
+        if (other == null) return 1;
+        int protocolCompare = protocol.compareTo(other.protocol);
+        if (protocolCompare != 0) return protocolCompare;
+        int senderCompare = sender.compareTo(other.sender);
+        return senderCompare != 0 ? senderCompare : name.compareTo(other.name);
     }
 
     /**
