@@ -1,0 +1,116 @@
+schema_version: 1
+matrix_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+
+version_pins:
+  minecraft: 1.21.11
+  server: Leaf
+  server_build: 1.21.11-172-33ce487
+  java: "25"
+  packetevents: 2.13.0
+  p2p: 1.0.2
+  protocol_version: 774
+
+result_values:
+  - PASS
+  - FAIL
+  - BLOCKED
+  - NOT_RUN
+
+# A case is PASS only when every required observation has a matching artifact.
+# A raw socket probe can prove network behavior, but it cannot by itself prove
+# that P2P saw or transformed the packet.
+cases:
+  - id: handshake
+    protocol_state: HANDSHAKING
+    driver: raw_socket_status_probe
+    required_observations:
+      - raw_handshake_accepted
+      - p2p_transition_marker
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: status
+    protocol_state: STATUS
+    driver: raw_socket_status_probe
+    required_observations:
+      - status_response
+      - pong_response
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: login
+    protocol_state: LOGIN
+    driver: real_client_driver
+    required_observations:
+      - login_start_observed
+      - login_success_observed
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: configuration
+    protocol_state: CONFIGURATION
+    driver: real_client_driver
+    required_observations:
+      - configuration_transition_observed
+      - configuration_ack_observed
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: play
+    protocol_state: PLAY
+    driver: real_client_driver_plus_p2psmoke
+    required_observations:
+      - packet_send_observed
+      - packet_receive_observed
+      - packet_modify_observed
+      - packet_cancel_observed
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: async
+    protocol_state: PLAY
+    driver: real_client_driver_plus_p2psmoke
+    required_observations:
+      - async_listener_observed
+      - async_off_main_thread
+      - per_player_ordering_observed
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: reconnect
+    protocol_state: PLAY
+    driver: real_client_driver
+    required_observations:
+      - disconnect_clean
+      - reconnect_clean
+      - packet_smoke_after_reconnect
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []
+
+  - id: restart
+    protocol_state: SERVER_LIFECYCLE
+    driver: server_restart_gate
+    required_observations:
+      - clean_shutdown
+      - clean_startup
+      - dependency_order_correct
+      - packet_smoke_after_restart
+      - no_linkage_errors
+    result: NOT_RUN
+    status: NOT_CERTIFIED
+    evidence: []

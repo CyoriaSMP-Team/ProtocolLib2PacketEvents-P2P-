@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "live_boot_observation",
+  "run_id": "mcsv-live-boot-2026-08-16",
+  "captured_at": "2026-08-16T03:15:34+07:00",
+  "environment": {
+    "id": "mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2",
+    "server": "Leaf",
+    "server_version": "1.21.11",
+    "server_build": "1.21.11-172-33ce487",
+    "java": "25",
+    "packetevents": "2.13.0",
+    "p2p": "1.0.2"
+  },
+  "plugin": {
+    "name": "ProtocolLib2PacketEvents",
+    "version": "1.0.2"
+  },
+  "result": "PASS",
+  "status_level": "NOT_CERTIFIED",
+  "checks": {
+    "enable_observed": true,
+    "disable_clean": false,
+    "reload_clean": false,
+    "no_p2p_linkage_errors": true,
+    "smoke_plugin_loaded": false
+  },
+  "observations": {
+    "source": "MCSV logs_startup",
+    "boot_file": "logs/latest.log",
+    "boot_completed": true,
+    "p2p_advertised_api": "5.4.0",
+    "packetevents_version": "2.13.0",
+    "grimac_version": "2.3.74-40684fb",
+    "zmenu_version": "1.1.1.6",
+    "other_startup_errors": [
+      "GrimAC reported missing SLF4J provider warnings.",
+      "zMenu reported a missing NexoItemsLoadedEvent hook.",
+      "DeluxeMenus reported a duplicate open_command."
+    ]
+  },
+  "artifact_sha256": null,
+  "log_sha256": null,
+  "limitations": [
+    "This is an enable observation only; it does not prove disable/reload.",
+    "The P2PSmokeTest jar was uploaded after this boot and was not loaded in this observation.",
+    "The unrelated startup errors remain part of the pinned environment baseline."
+  ]
+}

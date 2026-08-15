@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "local_build",
+  "run_id": "local-build-2026-08-16",
+  "captured_at": "2026-08-16T03:16:00+07:00",
+  "source": {
+    "branch": "agent/evidence-matrix",
+    "base_revision": "9effa8e415ba841a4c8b226e4b6a56bb94221fcf",
+    "tree_state": "working-tree evidence changes"
+  },
+  "checks": {
+    "mvn_test": "PASS",
+    "mvn_install_skip_tests": "PASS",
+    "smoke_plugin_package": "PASS",
+    "manifest_validate": "PASS",
+    "protocol_matrix_validate": "PASS",
+    "python_compile": "PASS"
+  },
+  "artifacts": {
+    "p2p": {
+      "path": "target/ProtocolLib2PacketEvents-1.0.2.jar",
+      "bytes": 10074790,
+      "sha256": "55fed0d6319d194956884c51819213e71ed158c69684a5659dcdd3253678d40a"
+    },
+    "smoke_plugin": {
+      "path": "evidence/smoke-plugin/target/P2PSmokeTest-1.0.0.jar",
+      "bytes": 13733,
+      "sha256": "3e918c9f9c44ceb4cbd5bd65c4b2f581982de0cf37166cc64481646273c1532c"
+    }
+  },
+  "limitations": [
+    "This is a local build record, not a live certification.",
+    "The P2PSmokeTest artifact is uploaded to MCSV but was not loaded in the last boot."
+  ]
+}

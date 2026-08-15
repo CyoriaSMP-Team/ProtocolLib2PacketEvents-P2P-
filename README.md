@@ -101,7 +101,36 @@ scan covers 428 upstream production classes and reports:
 
 This is an implementation/ABI result, not a version certification. Minecraft versions, pre-login
 flows, and the Leaf/MCSV deployment remain live-test pending until a real server and client pass
-the matrix in `compatibility/packetevents-version-matrix.properties`.
+the matrix in [`compatibility/protocol-state-matrix.yml`](compatibility/protocol-state-matrix.yml).
+
+## Evidence-first compatibility matrix
+
+The reproducible evidence contract lives in [`compatibility/plugins.yml`](compatibility/plugins.yml).
+It keeps environment pins, plugin versions, required checks, and promotion rules together. The
+status levels are intentionally strict:
+
+- `BOOT` requires clean enable, disable, reload, and no linkage errors.
+- `CORE` adds the ProtocolLib API smoke checks.
+- `PACKET_BEHAVIOR` adds real send/receive/cancel/modify, async, and ordering checks.
+- `FULLY_TESTED` additionally requires reconnect and restart evidence in the same exact scope.
+
+Build the evidence-only smoke plugin after installing the current P2P artifact:
+
+```bash
+python3 tools/run_p2p_smoke.py validate
+python3 tools/run_p2p_smoke.py build
+python3 tools/protocol_matrix.py validate
+python3 tools/protocol_matrix.py plan
+```
+
+`P2PSmokeTest` writes `plugins/P2PSmokeTest/evidence.json` and emits
+`P2P_EVIDENCE_JSON` log markers. The external runner merges those observations with lifecycle
+logs and refuses to promote a result when required checks are missing. The live protocol-state
+cases are listed in [`compatibility/protocol-state-matrix.yml`](compatibility/protocol-state-matrix.yml).
+
+The committed MCSV baselines under [`evidence/baselines`](evidence/baselines) are observations,
+not certification: the current raw status probe passes, while P2P packet behavior and the smoke
+plugin lifecycle remain unverified until a controlled live run.
 
 ## What is implemented
 

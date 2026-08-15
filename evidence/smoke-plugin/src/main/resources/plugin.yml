@@ -1,0 +1,16 @@
+name: P2PSmokeTest
+main: com.cyoriasmp.p2psmoke.P2PSmokeTest
+version: 1.0.0
+author: CyoriaSMP Team
+description: Evidence-only ProtocolLib2PacketEvents smoke plugin.
+depend: [ProtocolLib]
+softdepend: [packetevents]
+commands:
+  p2psmoke:
+    description: Runs the ProtocolLib2PacketEvents evidence smoke checks.
+    usage: /p2psmoke <status|send|modify|cancel|await|reset|mark-reload|report>
+    permission: p2psmoke.admin
+permissions:
+  p2psmoke.admin:
+    description: Allows running P2PSmokeTest commands.
+    default: op

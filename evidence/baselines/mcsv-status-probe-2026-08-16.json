@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "kind": "status_probe_baseline",
+  "run_id": "mcsv-status-probe-2026-08-16",
+  "captured_at": "2026-08-16T03:14:52+07:00",
+  "environment": {
+    "id": "mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2",
+    "server": "Leaf",
+    "server_version": "1.21.11",
+    "server_build": "1.21.11-172-33ce487",
+    "java": "25",
+    "packetevents": "2.13.0",
+    "p2p": "1.0.2",
+    "protocol_version": 774
+  },
+  "plugin": {
+    "name": "raw-status-probe",
+    "version": "1"
+  },
+  "result": "PASS",
+  "status_level": "NOT_CERTIFIED",
+  "checks": {
+    "raw_handshake_accepted": true,
+    "status_response": true,
+    "pong_response": true,
+    "p2p_interception": false
+  },
+  "target": {
+    "host": "cyoriasmp.mcsv.me",
+    "port": 25565
+  },
+  "observations": {
+    "reported_version": "Leaf 1.21.11",
+    "reported_protocol_version": 774,
+    "players_online": 0,
+    "players_max": 50
+  },
+  "artifact_sha256": null,
+  "log_sha256": null,
+  "limitations": [
+    "This proves only the raw handshake/status/ping path.",
+    "It does not prove that ProtocolLib2PacketEvents intercepted or transformed a packet."
+  ]
+}

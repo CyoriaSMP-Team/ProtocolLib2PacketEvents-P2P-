@@ -1,0 +1,117 @@
+schema_version: 1
+
+# These levels describe what the evidence proves.  They are deliberately
+# stricter than a successful Maven build or a clean plugin enable.
+status_levels:
+  BOOT:
+    definition: "The plugin enables, disables, and reloads cleanly in the pinned environment."
+    required_checks:
+      - enable_clean
+      - disable_clean
+      - reload_clean
+      - no_linkage_errors
+  CORE:
+    definition: "The plugin's core API smoke checks pass after BOOT."
+    required_checks:
+      - boot
+      - core_api
+  PACKET_BEHAVIOR:
+    definition: "The scoped send, receive, cancel, modify, and async packet checks pass."
+    required_checks:
+      - core
+      - send
+      - receive
+      - cancel
+      - modify
+      - async
+      - ordering
+  FULLY_TESTED:
+    definition: "CORE and PACKET_BEHAVIOR pass, plus reconnect and restart with no known regression in this exact scope."
+    required_checks:
+      - core
+      - packet_behavior
+      - reconnect
+      - restart
+      - no_known_regression
+
+evidence_contract:
+  result_values:
+    - PASS
+    - FAIL
+    - BLOCKED
+    - NOT_RUN
+  required_fields:
+    - schema_version
+    - run_id
+    - started_at
+    - environment
+    - plugin
+    - result
+    - status_level
+    - checks
+    - artifact_sha256
+    - log_sha256
+  promotion_rules:
+    BOOT: "Every required BOOT check must be PASS in one pinned environment."
+    CORE: "BOOT plus every required CORE check must be PASS in one pinned environment."
+    PACKET_BEHAVIOR: "CORE plus every required packet check must be PASS; NOT_RUN is not accepted."
+    FULLY_TESTED: "PACKET_BEHAVIOR plus reconnect and restart must be PASS for the same exact versions."
+
+# This is the environment that will be used for the first live run.  Null
+# plugin versions are intentional: they must be filled from the live plugin
+# descriptors before that plugin can receive a certified status.
+environments:
+  - id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    server: Leaf
+    server_version: 1.21.11
+    server_build: 1.21.11-172-33ce487
+    java: "25"
+    packetevents: 2.13.0
+    p2p: 1.0.2
+    protocol_version: 774
+    protocol_version_source: "Verified by the raw status probe on 2026-08-16; this is a network baseline, not P2P certification."
+    scope: target
+    certification: NOT_CERTIFIED
+
+plugins:
+  - id: packetevents
+    plugin_name: packetevents
+    version: 2.13.0
+    environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    status: NOT_CERTIFIED
+    evidence:
+      - evidence/baselines/mcsv-live-boot-2026-08-16.json
+
+  - id: ProtocolLib2PacketEvents
+    plugin_name: ProtocolLib2PacketEvents
+    version: 1.0.2
+    api_level: 5.4.0
+    environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    status: NOT_CERTIFIED
+    evidence:
+      - evidence/baselines/mcsv-live-boot-2026-08-16.json
+
+  - id: P2PSmokeTest
+    plugin_name: P2PSmokeTest
+    version: 1.0.0
+    environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    status: NOT_TESTED
+    evidence: []
+
+  - id: GrimAC
+    plugin_name: GrimAC
+    version: 2.3.74-40684fb
+    version_source: "MCSV logs_startup live observation on 2026-08-16."
+    environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    status: NOT_CERTIFIED
+    evidence:
+      - evidence/baselines/mcsv-live-boot-2026-08-16.json
+
+  - id: zMenu
+    plugin_name: zMenu
+    version: 1.1.1.6
+    version_source: "MCSV logs_startup live observation on 2026-08-16."
+    environment_id: mcsv-leaf-1.21.11-pe-2.13.0-p2p-1.0.2
+    status: NOT_CERTIFIED
+    evidence:
+      - evidence/baselines/mcsv-live-boot-2026-08-16.json
