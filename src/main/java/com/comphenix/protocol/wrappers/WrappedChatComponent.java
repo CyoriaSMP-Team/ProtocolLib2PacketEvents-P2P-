@@ -31,11 +31,10 @@ import net.kyori.adventure.text.Component;
  * and parsed through PacketEvents' own serializer so the result matches exactly what
  * PacketEvents would put on the wire.
  */
-public class WrappedChatComponent {
-
-    private final Component handle;
+public class WrappedChatComponent extends AbstractWrapper implements ClonableWrapper {
 
     private WrappedChatComponent(Component handle) {
+        super(Component.class);
         this.handle = handle;
     }
 
@@ -62,29 +61,48 @@ public class WrappedChatComponent {
         return text == null ? null : new WrappedChatComponent(Component.text(text));
     }
 
+    /** Parse the legacy chat message into the component sequence used by ProtocolLib. */
+    public static WrappedChatComponent[] fromChatMessage(String message) {
+        if (message == null) return new WrappedChatComponent[0];
+        return new WrappedChatComponent[] { fromLegacyText(message) };
+    }
+
     /** The JSON form of this component. */
     public String getJson() {
-        return AdventureSerializer.toJson(handle);
+        return AdventureSerializer.toJson((Component) handle);
     }
 
     /** The legacy section-sign form of this component. */
     public String getLegacyText() {
-        return AdventureSerializer.toLegacyFormat(handle);
+        return AdventureSerializer.toLegacyFormat((Component) handle);
     }
 
-    /** The underlying Adventure component PacketEvents stores. */
-    public Component getHandle() {
-        return handle;
+    /** PacketEvents-typed view used by this bridge's converter. */
+    public Component getComponent() {
+        return (Component) handle;
+    }
+
+    public void setJson(String json) {
+        if (json == null) throw new IllegalArgumentException("json cannot be null");
+        this.handle = AdventureSerializer.parseComponent(json);
+    }
+
+    public WrappedChatComponent deepClone() {
+        return handle == null ? null : fromJson(getJson());
+    }
+
+    public static WrappedChatComponent fromHandle(Object handle) {
+        return handle instanceof Component ? fromComponent((Component) handle) : null;
     }
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof WrappedChatComponent && handle.equals(((WrappedChatComponent) o).handle);
+        return o instanceof WrappedChatComponent && java.util.Objects.equals(handle, ((WrappedChatComponent) o).handle);
     }
 
     @Override
     public int hashCode() {
-        return handle == null ? 0 : handle.hashCode();
+        return java.util.Objects.hashCode(handle);
     }
 
     @Override
@@ -99,12 +117,12 @@ public class WrappedChatComponent {
     private static final EquivalentConverter<WrappedChatComponent> CONVERTER = new EquivalentConverter<>() {
         @Override
         public WrappedChatComponent getSpecific(Object generic) {
-            return fromComponent((Component) generic);
+            return fromHandle(generic);
         }
 
         @Override
         public Object getGeneric(WrappedChatComponent specific) {
-            return specific == null ? null : specific.getHandle();
+            return specific == null ? null : specific.getComponent();
         }
 
         @Override

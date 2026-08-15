@@ -247,8 +247,9 @@ public final class P2PPacketTypeGenerator {
             sb.append(" (alias of the PacketEvents spelling)");
         }
         sb.append(". */\n");
-        sb.append("    public static final class ").append(className).append(" {\n\n");
-        sb.append("        private ").append(className).append("() {\n        }\n\n");
+        sb.append("    public static class ").append(className).append(" {\n\n");
+        sb.append("        public ").append(className).append("() {\n        }\n\n");
+        sb.append("        public static Protocol getProtocol() { return Protocol.").append(protocol).append("; }\n\n");
         sb.append(renderSide("Client", protocol, "CLIENT", bySender.get("CLIENT")));
         sb.append("\n");
         sb.append(renderSide("Server", protocol, "SERVER", bySender.get("SERVER")));
@@ -258,8 +259,8 @@ public final class P2PPacketTypeGenerator {
 
     private static String renderSide(String className, String protocol, String sender, List<String> names) {
         StringBuilder sb = new StringBuilder();
-        sb.append("        public static final class ").append(className).append(" {\n\n");
-        sb.append("            private ").append(className).append("() {\n            }\n\n");
+        sb.append("        public static class ").append(className).append(" extends PacketTypeEnum {\n\n");
+        sb.append("            private static final Sender SENDER = Sender.").append(sender).append(";\n\n");
         if (names != null) {
             for (String name : names) {
                 sb.append("            public static final PacketType ").append(name)
@@ -269,6 +270,13 @@ public final class P2PPacketTypeGenerator {
             }
             sb.append("\n");
         }
+
+        // Constructing the PacketTypeEnum after the fields have been initialized is
+        // important: its reflection-based registerAll() must see real PacketType values.
+        sb.append("            private static final ").append(className).append(" INSTANCE = new ").append(className).append("();\n");
+        sb.append("            private ").append(className).append("() {\n            }\n\n");
+        sb.append("            public static Sender getSender() { return SENDER; }\n");
+        sb.append("            public static ").append(className).append(" getInstance() { return INSTANCE; }\n\n");
 
         // ProtocolLib spells a number of packets differently to PacketEvents. Emit those names
         // too, pointing at the same packet type, so plugins compiled against ProtocolLib link
@@ -290,10 +298,6 @@ public final class P2PPacketTypeGenerator {
         sb.append("                return getOrThrow(Protocol.").append(protocol)
                 .append(", Sender.").append(sender).append(", name);\n");
         sb.append("            }\n\n");
-        sb.append("            public static java.util.Collection<PacketType> values() {\n");
-        sb.append("                return valuesOf(Protocol.").append(protocol)
-                .append(", Sender.").append(sender).append(");\n");
-        sb.append("            }\n");
         sb.append("        }\n");
         return sb.toString();
     }

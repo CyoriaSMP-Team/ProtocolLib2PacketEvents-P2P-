@@ -20,31 +20,85 @@
 package com.comphenix.protocol.wrappers;
 
 import com.comphenix.protocol.reflect.EquivalentConverter;
+import com.comphenix.protocol.error.ReportType;
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
+import org.bukkit.entity.Player;
+import org.bukkit.OfflinePlayer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Player profile handle, mirroring ProtocolLib's {@code WrappedGameProfile}.
  * Backed by PacketEvents' {@link UserProfile} rather than Mojang's authlib GameProfile.
  */
-public class WrappedGameProfile {
+public class WrappedGameProfile extends AbstractWrapper {
+
+    public static final ReportType REPORT_INVALID_UUID = new ReportType("Invalid UUID: %s");
 
     private final UserProfile handle;
+    private final Multimap<String, WrappedSignedProperty> properties;
+    private final ProfileHandle compatibilityHandle;
 
     private WrappedGameProfile(UserProfile handle) {
+        super(UserProfile.class);
         this.handle = handle;
+        this.properties = ArrayListMultimap.create();
+        List<TextureProperty> textureProperties = handle.getTextureProperties();
+        if (textureProperties != null) {
+            for (TextureProperty property : textureProperties) {
+                properties.put(property.getName(), WrappedSignedProperty.fromValues(
+                        property.getName(), property.getValue(), property.getSignature()));
+            }
+        }
+        this.compatibilityHandle = new ProfileHandle(handle.getUUID(), handle.getName(), properties);
     }
 
     public WrappedGameProfile(UUID uuid, String name) {
         this(new UserProfile(uuid, name));
     }
 
+    public WrappedGameProfile(String id, String name) {
+        this(id == null || id.isBlank() ? null : UUID.fromString(id), name);
+    }
+
+    public WrappedGameProfile(UUID uuid, String name, Multimap<String, WrappedSignedProperty> properties) {
+        this(uuid, name);
+        if (properties != null) this.properties.putAll(properties);
+        syncProperties();
+    }
+
     public static WrappedGameProfile fromHandle(UserProfile profile) {
         return profile == null ? null : new WrappedGameProfile(profile);
+    }
+
+    /** Accepts either PacketEvents' profile or the compatibility handle exposed by getHandle(). */
+    public static WrappedGameProfile fromHandle(Object profile) {
+        if (profile == null) {
+            return null;
+        }
+        if (profile instanceof WrappedGameProfile.ProfileHandle) {
+            return ((ProfileHandle) profile).toWrappedProfile();
+        }
+        if (profile instanceof UserProfile) {
+            return fromHandle((UserProfile) profile);
+        }
+        return null;
+    }
+
+    /** Creates a profile from a Bukkit player without touching version-specific NMS classes. */
+    public static WrappedGameProfile fromPlayer(Player player) {
+        return player == null ? null : new WrappedGameProfile(
+                new UserProfile(player.getUniqueId(), player.getName()));
+    }
+
+    public static WrappedGameProfile fromOfflinePlayer(OfflinePlayer player) {
+        return player == null ? null : new WrappedGameProfile(player.getUniqueId(), player.getName());
     }
 
     public UUID getUUID() {
@@ -62,22 +116,37 @@ public class WrappedGameProfile {
     }
 
     /** Skin/cape texture properties attached to this profile. */
-    public List<TextureProperty> getProperties() {
-        List<TextureProperty> properties = handle.getTextureProperties();
-        return properties == null ? new ArrayList<>() : properties;
+    public Multimap<String, WrappedSignedProperty> getProperties() {
+        return properties;
     }
 
     /** A copy of this profile with a different name, leaving this instance untouched. */
     public WrappedGameProfile withName(String name) {
-        return new WrappedGameProfile(new UserProfile(handle.getUUID(), name, handle.getTextureProperties()));
+        return new WrappedGameProfile(new UserProfile(handle.getUUID(), name, textureProperties()));
     }
 
     /** A copy of this profile with a different UUID, leaving this instance untouched. */
     public WrappedGameProfile withId(UUID uuid) {
-        return new WrappedGameProfile(new UserProfile(uuid, handle.getName(), handle.getTextureProperties()));
+        return new WrappedGameProfile(new UserProfile(uuid, handle.getName(), textureProperties()));
     }
 
-    public UserProfile getHandle() {
+    public WrappedGameProfile withId(String id) {
+        return withId(id == null ? null : UUID.fromString(id));
+    }
+
+    public boolean isComplete() {
+        return getUUID() != null && getName() != null && !getName().isEmpty();
+    }
+
+    /** The binary-compatible ProtocolLib handle view. */
+    public Object getHandle() {
+        syncProperties();
+        return compatibilityHandle;
+    }
+
+    /** PacketEvents-typed profile used internally by PacketContainer converters. */
+    public UserProfile getUserProfile() {
+        syncProperties();
         return handle;
     }
 
@@ -96,6 +165,21 @@ public class WrappedGameProfile {
         return "WrappedGameProfile[uuid=" + getUUID() + ", name=" + getName() + "]";
     }
 
+    private List<TextureProperty> textureProperties() {
+        syncProperties();
+        return handle.getTextureProperties();
+    }
+
+    private void syncProperties() {
+        List<TextureProperty> converted = new ArrayList<>();
+        for (Map.Entry<String, WrappedSignedProperty> entry : properties.entries()) {
+            WrappedSignedProperty property = entry.getValue();
+            converted.add(new TextureProperty(entry.getKey(), property.getValue(), property.getSignature()));
+        }
+        handle.setTextureProperties(converted);
+        compatibilityHandle.update(handle.getUUID(), handle.getName());
+    }
+
     public static EquivalentConverter<WrappedGameProfile> getConverter() {
         return CONVERTER;
     }
@@ -103,12 +187,12 @@ public class WrappedGameProfile {
     private static final EquivalentConverter<WrappedGameProfile> CONVERTER = new EquivalentConverter<>() {
         @Override
         public WrappedGameProfile getSpecific(Object generic) {
-            return fromHandle((UserProfile) generic);
+            return fromHandle(generic);
         }
 
         @Override
         public Object getGeneric(WrappedGameProfile specific) {
-            return specific == null ? null : specific.getHandle();
+            return specific == null ? null : specific.getUserProfile();
         }
 
         @Override
@@ -121,4 +205,46 @@ public class WrappedGameProfile {
             return UserProfile.class;
         }
     };
+
+    /**
+     * Small authlib-like object for old plugins that reflect getProperties() from the handle.
+     * It deliberately stays independent of NMS so the bridge remains version-neutral.
+     */
+    public static final class ProfileHandle {
+        private UUID id;
+        private String name;
+        private final Multimap<String, WrappedSignedProperty> properties;
+
+        private ProfileHandle(UUID id, String name, Multimap<String, WrappedSignedProperty> properties) {
+            this.id = id;
+            this.name = name;
+            this.properties = properties;
+        }
+
+        public UUID getId() {
+            return id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public Multimap<String, WrappedSignedProperty> getProperties() {
+            return properties;
+        }
+
+        private void update(UUID id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        private WrappedGameProfile toWrappedProfile() {
+            List<TextureProperty> values = new ArrayList<>();
+            for (Map.Entry<String, WrappedSignedProperty> entry : properties.entries()) {
+                WrappedSignedProperty property = entry.getValue();
+                values.add(new TextureProperty(entry.getKey(), property.getValue(), property.getSignature()));
+            }
+            return new WrappedGameProfile(new UserProfile(id, name, values));
+        }
+    }
 }

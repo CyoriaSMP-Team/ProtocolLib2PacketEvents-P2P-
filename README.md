@@ -1,12 +1,13 @@
 # ProtocolLib2PacketEvents (P2P)
 
-A drop-in [ProtocolLib](https://github.com/dmulloy2/ProtocolLib) compatibility layer powered by
+A ProtocolLib-compatible [ProtocolLib](https://github.com/dmulloy2/ProtocolLib) compatibility layer powered by
 [PacketEvents](https://github.com/retrooper/packetevents).
 
-P2P re-implements ProtocolLib's public API — same `com.comphenix.protocol.*` package names, same
-class and constant names — on top of PacketEvents. Plugins already compiled against ProtocolLib
-link and run against this without recompiling, while the actual packet interception is done by
-PacketEvents.
+P2P re-implements the high-value ProtocolLib API used by the server's installed plugins — same
+`com.comphenix.protocol.*` package names, class names, and packet constants — on top of PacketEvents.
+Plugins already compiled against the covered ProtocolLib surface link without recompiling, while the
+actual packet interception is done by PacketEvents. It is intentionally not an NMS-compatible fork
+of every internal ProtocolLib class.
 
 ## Why this can exist
 
@@ -34,7 +35,7 @@ API bucket. The `paper-api` version in `pom.xml` is a compile-time surface only 
 
 ```bash
 mvn package
-# -> target/ProtocolLib2PacketEvents-1.0.0.jar
+# -> target/ProtocolLib2PacketEvents-1.0.2.jar
 ```
 
 Drop the jar in `plugins/` alongside PacketEvents. `plugin.yml` declares `provides: [ProtocolLib]`,
@@ -57,7 +58,8 @@ therefore **generates** `PacketType.java` at build time:
    `target/generated-sources/packettypes`, which `build-helper-maven-plugin` adds as a source root.
 
 Bumping the PacketEvents dependency refreshes the constant set automatically. The current build
-generates **288 PacketEvents constants + 126 ProtocolLib-named aliases = 414 fields**.
+generates **288 PacketEvents constants + 149 ProtocolLib-named aliases** (aliases share the
+generated PacketEvents instances where the names are equivalent).
 
 ### Name aliases
 
@@ -86,24 +88,45 @@ Both spellings resolve to the same instance:
 `PacketType.Handshake` (ProtocolLib's spelling) and `PacketType.Handshaking` (PacketEvents')
 are both emitted.
 
+## Compatibility status
+
+The contract is pinned to ProtocolLib upstream SHA
+`67ce937109eb7bcc6e380ffe745d9b4a01ce1987` and PacketEvents `2.13.0`. The latest local ABI
+scan covers 428 upstream production classes and reports:
+
+- `missing_classes=0`
+- `missing_members=0`
+- `descriptor_mismatches=0`
+- `class_header_mismatches=37` (inheritance/modifier differences still require behavior review)
+
+This is an implementation/ABI result, not a version certification. Minecraft versions, pre-login
+flows, and the Leaf/MCSV deployment remain live-test pending until a real server and client pass
+the matrix in `compatibility/packetevents-version-matrix.properties`.
+
 ## What is implemented
 
 - **`ProtocolManager`** — add/remove listeners, `sendServerPacket`, `broadcastServerPacket`,
-  `receiveClientPacket`, `createPacket`, `getEntityFromID`, `getListeningTypes`
+  `receiveClientPacket` plus the historical `recieveClientPacket` overloads, asynchronous-manager
+  access, `createPacket`, `getEntityFromID`, `getListeningTypes`
 - **Listener plumbing** — `PacketAdapter`, `PacketListener`, `PacketEvent`, `ListeningWhitelist`,
   `ListenerPriority`, `ConnectionSide`, with ProtocolLib's priority ordering (low first, MONITOR
   last)
-- **`PacketContainer`** with typed accessors: `getIntegers()`, `getStrings()`, `getBytes()`,
-  `getUUIDs()`, `getByteArrays()`, `getItemModifier()`, `getChatComponents()`,
-  `getBlockPositionModifier()`, `getGameProfiles()`, `getDataWatcherModifier()`, `getHands()`,
-  `getItemSlots()`, `getDirections()`, and `convert(...)` for custom converters
-- **Wrappers** — `WrappedChatComponent` (Adventure-backed), `WrappedGameProfile` (`UserProfile`),
-  `BlockPosition` (`Vector3i`), `WrappedDataWatcher` / `WrappedWatchableObject` (`EntityData`),
-  `EnumWrappers`
-- **`AsynchronousManager`** — a real worker pool with per-player serial ordering
-- **Raw fallback** — 12 packet types have no PacketEvents wrapper; those still dispatch to
-  listeners and can be cancelled, with `getRawBuffer()` for byte-level access. Check
-  `hasStructuredAccess()` first.
+- **`PacketContainer`** with primitive, item, chat, profile, entity-type, chunk-coordinate,
+  merchant/item-list, and 1.19.3+ DataValue/DataWatcher modifiers. `getHandle()` keeps the
+  ProtocolLib `Object` descriptor; `getPacketWrapper()` is the PacketEvents-typed bridge method.
+- **Wrappers** — `WrappedChatComponent` (Adventure-backed), `WrappedGameProfile`/signed properties,
+  `BlockPosition`, `ChunkCoordIntPair`, `WrappedDataWatcher`, `WrappedDataValue`,
+  `WrappedWatchableObject`, and serializer registry facades.
+- **Reflection compatibility** — the legacy `FuzzyReflection`, `FieldUtils`, `MethodUtils`,
+  accessor, `MinecraftReflection`, and `StreamSerializer` methods used by the installed plugins.
+- **`AsynchronousManager`** — a real worker pool with per-player serial ordering, timeout/cancel
+  handling, hold/release, and legacy bounded `AsyncListenerHandler`/`AsyncMarker` queues.
+- **Hybrid transport** — PacketEvents owns structured packets; a native Netty interceptor handles
+  unmodelled raw frames, protocol transitions, temporary players, cancellation, byte edits, and
+  output handlers without dispatching structured PacketEvents twice.
+- **Raw fallback** — unmodelled packet types can be intercepted and cancelled with
+  `getRawBuffer()` byte-level access when the server exposes a compatible Netty channel. Check
+  `hasStructuredAccess()` and runtime capability detection first.
 
 Dispatch indexes listeners by packet type, so a plugin listening for one packet does not add
 per-listener work to every other packet on the server.
@@ -116,19 +139,22 @@ These are real behavioural differences, not TODOs to gloss over:
    PacketEvents' wrapper classes, not on NMS packet classes. `getIntegers().read(0)` may therefore
    refer to a different field than under real ProtocolLib. Prefer the typed getters on
    PacketEvents' wrapper (`packet.getHandle()`) when you need certainty.
-2. **Async listeners observe, they cannot modify.** Real ProtocolLib suspends a packet in the
-   pipeline and re-injects it after async processing. PacketEvents exposes no hold-and-reinject
-   hook, so `AsynchronousManager` dispatches a snapshot and lets the packet continue. Async
-   listeners cannot cancel or mutate; use a synchronous listener for that.
+2. **Direct Netty certification is pending.** The fallback is implemented for native Netty
+   channels and uses explicit capability detection; shaded/reflection-only channels fall back to
+   PacketEvents' public channel API. The actual handshake/status/login/configuration/play matrix
+   still needs a live server/client run.
 3. **`WrappedDataWatcher.setObject(index, value)`** infers the entity data type only for
    unambiguous primitives. For a new index holding a component, optional, item stack or particle,
    use `setObject(int, EntityDataType, Object)` — guessing would pick the wrong serializer.
-4. **Pre-login packets are skipped.** ProtocolLib's API is `Player`-typed, so handshake/login
-   packets that have no Bukkit `Player` yet are not dispatched.
+4. **Pre-login is capability-gated.** The direct interceptor creates a temporary `Player` before
+   Bukkit login and tracks handshake/status/login/configuration transitions. This path is not
+   certified for every PacketEvents server version until the live matrix is run.
 5. **NMS types are never exposed.** Anything expecting a literal NMS handle out of
    `getModifier().read(...)` gets a PacketEvents object instead.
-6. **Not every ProtocolLib class exists.** `PacketContainer`/`ProtocolManager`/wrapper coverage is
-   broad but not exhaustive; less common utility classes are absent.
+6. **Behavior certification is narrower than class inventory.** The class/member inventory is
+   complete against the pinned production source, but native-only internals can still return an
+   explicit unsupported-capability exception when the server has no equivalent
+   PacketEvents/Bukkit representation. P2P does not silently report success for those paths.
 
 ## Implementation notes
 

@@ -24,6 +24,8 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /**
  * Reflection-based accessor over a target object's declared instance fields, filtered by type
@@ -39,6 +41,7 @@ import java.util.List;
 public class StructureModifier<T> {
 
     private final Object target;
+    private final Class<?> targetType;
     private final Class<?> fieldType;
     private final EquivalentConverter<T> converter;
     private final List<Field> fields;
@@ -48,23 +51,48 @@ public class StructureModifier<T> {
     }
 
     public StructureModifier(Object target, Class<?> fieldType, EquivalentConverter<T> converter) {
+        this(target, target == null ? null : target.getClass(), fieldType, converter, null, false);
+    }
+
+    public StructureModifier(Class<?> targetType) {
+        this(null, targetType, Object.class, null, null, false);
+    }
+
+    public StructureModifier(Class<?> targetType, Class<?> superclassExclude, boolean requirePublic) {
+        this(null, targetType, Object.class, null, superclassExclude, requirePublic);
+    }
+
+    protected StructureModifier() {
+        this(null, null, Object.class, null, null, false);
+    }
+
+    private StructureModifier(Object target, Class<?> targetType, Class<?> fieldType,
+                              EquivalentConverter<T> converter, Class<?> superclassExclude,
+                              boolean requirePublic) {
         this.target = target;
+        this.targetType = targetType;
         this.fieldType = fieldType;
         this.converter = converter;
         List<Field> collected = new ArrayList<>();
-        collectFields(target == null ? null : target.getClass(), fieldType, collected);
+        collectFields(targetType, fieldType, collected, superclassExclude, requirePublic);
         this.fields = Collections.unmodifiableList(collected);
     }
 
-    private static void collectFields(Class<?> clazz, Class<?> fieldType, List<Field> out) {
+    private static void collectFields(Class<?> clazz, Class<?> fieldType, List<Field> out,
+                                      Class<?> superclassExclude, boolean requirePublic) {
         if (clazz == null || clazz == Object.class) {
             return;
         }
         // Walk the hierarchy top-down so field order matches declaration order, the way
         // ProtocolLib's own StructureModifier orders packet fields.
-        collectFields(clazz.getSuperclass(), fieldType, out);
+        if (clazz != superclassExclude) {
+            collectFields(clazz.getSuperclass(), fieldType, out, superclassExclude, requirePublic);
+        }
         for (Field field : clazz.getDeclaredFields()) {
             if (Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (requirePublic && !Modifier.isPublic(field.getModifiers())) {
                 continue;
             }
             if (matches(field.getType(), fieldType)) {
@@ -125,6 +153,15 @@ public class StructureModifier<T> {
         return value == null ? fallback : value;
     }
 
+    /** Reads a value, returning {@code null} when the index is absent or the value is null. */
+    public T readSafely(int index) {
+        return readSafely(index, null);
+    }
+
+    public Optional<T> optionRead(int fieldIndex) {
+        return fieldIndex < 0 || fieldIndex >= fields.size() ? Optional.empty() : Optional.ofNullable(read(fieldIndex));
+    }
+
     public StructureModifier<T> write(int index, T value) {
         checkBounds(index);
         Object raw = converter == null ? value : converter.getGeneric(value);
@@ -147,6 +184,33 @@ public class StructureModifier<T> {
         return this;
     }
 
+    public StructureModifier<T> modify(int index, UnaryOperator<T> select) {
+        return write(index, select.apply(read(index)));
+    }
+
+    /** Resets every selected field to its Java default value. */
+    @SuppressWarnings("unchecked")
+    public StructureModifier<T> writeDefaults() {
+        for (int i = 0; i < fields.size(); i++) {
+            Field field = fields.get(i);
+            Object value = field.getType().isPrimitive() ? primitiveDefault(field.getType()) : null;
+            write(i, (T) value);
+        }
+        return this;
+    }
+
+    private static Object primitiveDefault(Class<?> type) {
+        if (type == boolean.class) return false;
+        if (type == char.class) return '\0';
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0F;
+        if (type == double.class) return 0D;
+        return null;
+    }
+
     /** A modifier over the fields of another raw type on the same packet. */
     public <U> StructureModifier<U> withType(Class<U> type) {
         return new StructureModifier<>(target, type);
@@ -157,9 +221,61 @@ public class StructureModifier<T> {
         return new StructureModifier<>(target, converter.getGenericType(), converter);
     }
 
+    public <U> StructureModifier<U> withParamType(Class<?> type, EquivalentConverter<U> converter, int parameterIndex) {
+        return new StructureModifier<>(target, converter.getGenericType(), converter);
+    }
+
+    public <R> StructureModifier<R> withParamType(Class<?> type, EquivalentConverter<R> converter,
+                                                  Class<?>... parameterTypes) {
+        return new StructureModifier<>(target, converter.getGenericType(), converter);
+    }
+
+    protected <U> StructureModifier<U> withFieldType(Class<?> type, EquivalentConverter<U> converter) {
+        return new StructureModifier<>(target, type, converter);
+    }
+
+    protected <U> StructureModifier<U> withFieldType(Class<?> type) {
+        return new StructureModifier<>(target, type);
+    }
+
+    public StructureModifier<T> withTarget(Object newTarget) {
+        return new StructureModifier<>(newTarget, fieldType, converter);
+    }
+
     /** The object whose fields this modifier reads and writes. */
     public Object getTarget() {
         return target;
+    }
+
+    public Class<?> getTargetType() {
+        return targetType;
+    }
+
+    public Class<?> getFieldType() {
+        return fieldType;
+    }
+
+    public Field getField(int index) {
+        checkBounds(index);
+        return fields.get(index);
+    }
+
+    public List<T> getValues() {
+        List<T> values = new ArrayList<>(fields.size());
+        for (int index = 0; index < fields.size(); index++) values.add(read(index));
+        return values;
+    }
+
+    protected void setConverter(EquivalentConverter<T> converter) {
+        // Kept for source/binary compatibility. Modifiers are immutable in this implementation;
+        // callers should use withType(type, converter) to obtain a converted view.
+    }
+
+    @Override
+    public String toString() {
+        return "StructureModifier{" + (targetType == null ? "null" : targetType.getName())
+                + ", fieldType=" + (fieldType == null ? "null" : fieldType.getName())
+                + ", size=" + fields.size() + "}";
     }
 
     private void checkBounds(int index) {

@@ -44,5 +44,13 @@ public interface EquivalentConverter<T> {
      * The type of the wrapper field this converter applies to. {@link StructureModifier} uses
      * this to decide which fields a converted modifier should expose.
      */
-    Class<?> getGenericType();
+    /**
+     * P2P's field model may expose the backing type to its own modifiers.  A
+     * default keeps converters compiled against ProtocolLib's three-method
+     * interface binary-compatible while allowing bridge converters to provide
+     * the more precise type.
+     */
+    default Class<?> getGenericType() {
+        return getSpecificType();
+    }
 }

@@ -6,12 +6,32 @@ main: com.comphenix.protocol.ProtocolLib
 # Bukkit.getPluginManager().getPlugin("ProtocolLib") - which resolves to this plugin
 # through `provides` below - and refuse to enable any ProtocolLib older than v5.0.0,
 # because ProtocolLib 4.x is genuinely incompatible with PacketEvents 2.x. P2P's real
-# release version (1.0.0) is carried by the jar name and the GitHub releases.
+# release version (1.0.2) is carried by the jar name and the GitHub releases.
 version: 5.4.0
 author: CyoriaSMP Team
 description: A drop-in ProtocolLib compatibility layer powered by PacketEvents.
+p2p-version: 1.0.2
+protocol-lib-api-version: 5.4.0
 depend: [packetevents]
 provides: [ProtocolLib]
+commands:
+  protocol:
+    description: Performs administrative tasks regarding ProtocolLib2PacketEvents.
+    usage: /<command> version|check|update|reload|timings
+    permission: protocol.admin
+  packet:
+    description: Add or remove a simple packet listener.
+    usage: /<command> add|remove|names client|server [protocol] <packet|range>
+    permission: protocol.admin
+  filter:
+    description: Add or remove programmable packet filters.
+    usage: /<command> add|remove <name> [expression]
+    aliases: [packet_filter]
+    permission: protocol.admin
+  packetlog:
+    description: Logs packet types and raw payload sizes.
+    usage: /<command> <client|server> <packet names or ids>
+    permission: protocol.admin
 # Deliberately no `api-version`: this plugin's own code contains no version-specific
 # packet logic (all packet ID / field mapping is delegated to PacketEvents at runtime),
 # so it should be loadable across the full Minecraft version range PacketEvents itself

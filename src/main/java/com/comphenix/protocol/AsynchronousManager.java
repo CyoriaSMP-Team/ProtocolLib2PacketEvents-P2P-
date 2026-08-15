@@ -20,9 +20,12 @@
 package com.comphenix.protocol;
 
 import com.comphenix.protocol.events.PacketListener;
+import com.comphenix.protocol.async.AsyncListenerHandler;
+import com.comphenix.protocol.events.PacketEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.util.Set;
+import java.util.Collections;
 
 /**
  * Asynchronous packet processing, mirroring ProtocolLib's {@code AsynchronousManager}.
@@ -31,21 +34,49 @@ import java.util.Set;
  * blocking work (database lookups, HTTP calls) without stalling the connection. Packets for a
  * given player are processed strictly in order, so a slow listener delays that player's later
  * packets rather than letting them overtake.
- * <p>
- * There is one important semantic difference from real ProtocolLib, forced by how PacketEvents
- * intercepts packets - see {@code injector.AsynchronousManagerImpl} and the README: the packet
- * is <em>not</em> held on the wire while the async listener runs. Async listeners here observe
- * packets and can act on them, but cannot retroactively cancel or mutate one that has already
- * been sent. Use a synchronous listener when the decision must affect the packet itself.
+ * <p>The PacketEvents bridge holds the callback while the per-player async lane runs, so a
+ * listener can still mutate or cancel the shared event before the encoder resumes.</p>
  */
 public interface AsynchronousManager {
 
     /** Registers a listener to be run off the network thread. */
-    void registerAsyncHandler(PacketListener listener);
+    AsyncListenerHandler registerAsyncHandler(PacketListener listener);
+
+    /** Removes a previously registered asynchronous handler. */
+    default void unregisterAsyncHandler(AsyncListenerHandler handler) {
+        if (handler != null) {
+            unregisterAsyncHandler(handler.getAsyncListener());
+        }
+    }
 
     void unregisterAsyncHandler(PacketListener listener);
 
     void unregisterAsyncHandlers(Plugin plugin);
+
+    Set<PacketType> getSendingTypes();
+
+    Set<PacketType> getReceivingTypes();
+
+    boolean hasAsynchronousListeners(PacketEvent packet);
+
+    PacketStream getPacketStream();
+
+    com.comphenix.protocol.error.ErrorReporter getErrorReporter();
+
+    void cleanupAll();
+
+    /** Compatibility hook for ProtocolLib listeners that release a packet asynchronously. */
+    default void signalPacketTransmission(PacketEvent packet) {
+        if (packet != null && packet.getAsyncMarker() != null) {
+            packet.getAsyncMarker().signal();
+        }
+    }
+
+    void registerTimeoutHandler(PacketListener listener);
+
+    void unregisterTimeoutHandler(PacketListener listener);
+
+    Set<PacketListener> getTimeoutHandlers();
 
     /** Every currently registered asynchronous listener. */
     Set<PacketListener> getAsyncHandlers();
