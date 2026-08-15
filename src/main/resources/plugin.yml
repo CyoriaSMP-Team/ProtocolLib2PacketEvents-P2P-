@@ -6,7 +6,7 @@ main: com.comphenix.protocol.ProtocolLib
 # Bukkit.getPluginManager().getPlugin("ProtocolLib") - which resolves to this plugin
 # through `provides` below - and refuse to enable any ProtocolLib older than v5.0.0,
 # because ProtocolLib 4.x is genuinely incompatible with PacketEvents 2.x. P2P's real
-# release version (1.0.0) is carried by the jar name and the GitHub releases.
+# release version (1.0.2) is carried by the jar name and the GitHub releases.
 version: 5.4.0
 author: CyoriaSMP Team
 description: A drop-in ProtocolLib compatibility layer powered by PacketEvents.

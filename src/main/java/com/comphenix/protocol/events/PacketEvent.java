@@ -19,6 +19,7 @@
  */
 package com.comphenix.protocol.events;
 
+import com.comphenix.protocol.async.AsyncMarker;
 import com.github.retrooper.packetevents.event.ProtocolPacketEvent;
 import org.bukkit.entity.Player;
 
@@ -36,6 +37,7 @@ public class PacketEvent extends EventObject {
     private final Player player;
     private final boolean serverPacket;
     private final transient ProtocolPacketEvent handle;
+    private final AsyncMarker asyncMarker = new AsyncMarker();
     private boolean cancelled;
     private boolean asynchronous;
 
@@ -101,6 +103,16 @@ public class PacketEvent extends EventObject {
 
     public void setAsync(boolean asynchronous) {
         this.asynchronous = asynchronous;
+    }
+
+    /** Compatibility marker used by legacy asynchronous ProtocolLib listeners. */
+    public AsyncMarker getAsyncMarker() {
+        return asyncMarker;
+    }
+
+    /** PacketEvents only exposes Bukkit players after login, so intercepted players are real. */
+    public boolean isPlayerTemporary() {
+        return false;
     }
 
     /**

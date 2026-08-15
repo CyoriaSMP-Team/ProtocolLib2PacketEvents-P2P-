@@ -125,6 +125,11 @@ public class StructureModifier<T> {
         return value == null ? fallback : value;
     }
 
+    /** Reads a value, returning {@code null} when the index is absent or the value is null. */
+    public T readSafely(int index) {
+        return readSafely(index, null);
+    }
+
     public StructureModifier<T> write(int index, T value) {
         checkBounds(index);
         Object raw = converter == null ? value : converter.getGeneric(value);
@@ -145,6 +150,29 @@ public class StructureModifier<T> {
             write(index, value);
         }
         return this;
+    }
+
+    /** Resets every selected field to its Java default value. */
+    @SuppressWarnings("unchecked")
+    public StructureModifier<T> writeDefaults() {
+        for (int i = 0; i < fields.size(); i++) {
+            Field field = fields.get(i);
+            Object value = field.getType().isPrimitive() ? primitiveDefault(field.getType()) : null;
+            write(i, (T) value);
+        }
+        return this;
+    }
+
+    private static Object primitiveDefault(Class<?> type) {
+        if (type == boolean.class) return false;
+        if (type == char.class) return '\0';
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0F;
+        if (type == double.class) return 0D;
+        return null;
     }
 
     /** A modifier over the fields of another raw type on the same packet. */

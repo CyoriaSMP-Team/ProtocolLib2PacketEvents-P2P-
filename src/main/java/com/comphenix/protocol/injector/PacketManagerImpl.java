@@ -20,6 +20,7 @@
 package com.comphenix.protocol.injector;
 
 import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.AsynchronousManager;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.error.ErrorReporter;
 import com.comphenix.protocol.events.ListenerPriority;
@@ -76,6 +77,11 @@ public class PacketManagerImpl implements ProtocolManager {
 
     public void setAsynchronousManager(AsynchronousManagerImpl asynchronousManager) {
         this.asynchronousManager = asynchronousManager;
+    }
+
+    @Override
+    public AsynchronousManager getAsynchronousManager() {
+        return asynchronousManager;
     }
 
     @Override
@@ -154,9 +160,9 @@ public class PacketManagerImpl implements ProtocolManager {
     public void sendServerPacket(Player receiver, PacketContainer packet, boolean filters) {
         requireStructured(packet, "send");
         if (filters) {
-            PacketEvents.getAPI().getPlayerManager().sendPacket(receiver, packet.getHandle());
+            PacketEvents.getAPI().getPlayerManager().sendPacket(receiver, packet.getPacketWrapper());
         } else {
-            PacketEvents.getAPI().getPlayerManager().sendPacketSilently(receiver, packet.getHandle());
+            PacketEvents.getAPI().getPlayerManager().sendPacketSilently(receiver, packet.getPacketWrapper());
         }
     }
 
@@ -164,7 +170,7 @@ public class PacketManagerImpl implements ProtocolManager {
     public void broadcastServerPacket(PacketContainer packet) {
         requireStructured(packet, "broadcast");
         for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
-            PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet.getHandle());
+            PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet.getPacketWrapper());
         }
     }
 
@@ -176,7 +182,7 @@ public class PacketManagerImpl implements ProtocolManager {
     @Override
     public void receiveClientPacket(Player sender, PacketContainer packet) {
         requireStructured(packet, "receive");
-        PacketEvents.getAPI().getPlayerManager().receivePacketSilently(sender, packet.getHandle());
+        PacketEvents.getAPI().getPlayerManager().receivePacketSilently(sender, packet.getPacketWrapper());
     }
 
     private static void requireStructured(PacketContainer packet, String action) {

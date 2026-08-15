@@ -22,6 +22,7 @@ package com.comphenix.protocol.injector;
 import com.comphenix.protocol.AsynchronousManager;
 import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.error.ErrorReporter;
+import com.comphenix.protocol.async.AsyncListenerHandler;
 import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.events.PacketListener;
 import org.bukkit.entity.Player;
@@ -91,8 +92,19 @@ public class AsynchronousManagerImpl implements AsynchronousManager {
     }
 
     @Override
-    public void registerAsyncHandler(PacketListener listener) {
+    public AsyncListenerHandler registerAsyncHandler(PacketListener listener) {
         handlers.add(listener);
+        AsyncListenerHandler handler = new AsyncListenerHandler(listener);
+        handler.start(1);
+        return handler;
+    }
+
+    @Override
+    public void unregisterAsyncHandler(AsyncListenerHandler handler) {
+        if (handler != null) {
+            unregisterAsyncHandler(handler.getAsyncListener());
+            handler.cancel();
+        }
     }
 
     @Override

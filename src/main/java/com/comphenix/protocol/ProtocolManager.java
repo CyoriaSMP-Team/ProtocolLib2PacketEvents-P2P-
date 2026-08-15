@@ -21,6 +21,7 @@ package com.comphenix.protocol;
 
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketListener;
+import com.comphenix.protocol.AsynchronousManager;
 import com.comphenix.protocol.utility.MinecraftVersion;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -53,6 +54,19 @@ public interface ProtocolManager {
 
     /** Injects {@code packet} as though the client had sent it. */
     void receiveClientPacket(Player sender, PacketContainer packet);
+
+    /** ProtocolLib's historical spelling, retained for binary compatibility. */
+    default void recieveClientPacket(Player sender, PacketContainer packet) {
+        receiveClientPacket(sender, packet);
+    }
+
+    /** Historical overload used by older login plugins. */
+    default void recieveClientPacket(Player sender, PacketContainer packet, boolean filters) {
+        receiveClientPacket(sender, packet);
+    }
+
+    /** Asynchronous listener manager associated with this protocol manager. */
+    AsynchronousManager getAsynchronousManager();
 
     /** Allocates an empty packet of the given type, ready to be filled in and sent. */
     PacketContainer createPacket(PacketType type);

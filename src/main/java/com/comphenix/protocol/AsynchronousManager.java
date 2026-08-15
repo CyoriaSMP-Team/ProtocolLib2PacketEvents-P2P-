@@ -20,6 +20,8 @@
 package com.comphenix.protocol;
 
 import com.comphenix.protocol.events.PacketListener;
+import com.comphenix.protocol.async.AsyncListenerHandler;
+import com.comphenix.protocol.events.PacketEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.util.Set;
@@ -41,11 +43,25 @@ import java.util.Set;
 public interface AsynchronousManager {
 
     /** Registers a listener to be run off the network thread. */
-    void registerAsyncHandler(PacketListener listener);
+    AsyncListenerHandler registerAsyncHandler(PacketListener listener);
+
+    /** Removes a previously registered asynchronous handler. */
+    default void unregisterAsyncHandler(AsyncListenerHandler handler) {
+        if (handler != null) {
+            unregisterAsyncHandler(handler.getAsyncListener());
+        }
+    }
 
     void unregisterAsyncHandler(PacketListener listener);
 
     void unregisterAsyncHandlers(Plugin plugin);
+
+    /** Compatibility hook for ProtocolLib listeners that release a packet asynchronously. */
+    default void signalPacketTransmission(PacketEvent packet) {
+        if (packet != null && packet.getAsyncMarker() != null) {
+            packet.getAsyncMarker().signal();
+        }
+    }
 
     /** Every currently registered asynchronous listener. */
     Set<PacketListener> getAsyncHandlers();

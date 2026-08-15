@@ -58,8 +58,22 @@ public class WrappedWatchableObject {
         return handle.getType();
     }
 
-    public EntityData<?> getHandle() {
+    public Object getHandle() {
         return handle;
+    }
+
+    /** PacketEvents-typed view used internally by the bridge. */
+    public EntityData<?> getEntityData() {
+        return handle;
+    }
+
+    public Object getRawValue() {
+        return getValue();
+    }
+
+    public WrappedDataWatcher.WrappedDataWatcherObject getWatcherObject() {
+        return new WrappedDataWatcher.WrappedDataWatcherObject(getIndex(),
+                new WrappedDataWatcher.Serializer(getType()));
     }
 
     @Override

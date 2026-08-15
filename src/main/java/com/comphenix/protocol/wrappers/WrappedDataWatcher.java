@@ -23,6 +23,8 @@ import com.comphenix.protocol.reflect.EquivalentConverter;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataType;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
+import com.github.retrooper.packetevents.protocol.item.ItemStack;
+import net.kyori.adventure.text.Component;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -53,6 +55,12 @@ public class WrappedDataWatcher implements Iterable<WrappedWatchableObject> {
 
     public WrappedDataWatcher(List<EntityData<?>> handle) {
         this.handle = handle;
+    }
+
+    /** Wraps a raw PacketEvents metadata list when supplied through an Object-typed API. */
+    @SuppressWarnings("unchecked")
+    public WrappedDataWatcher(Object handle) {
+        this(handle instanceof List ? (List<EntityData<?>>) handle : new ArrayList<>());
     }
 
     /** Wraps the metadata list held by a PacketEvents wrapper, sharing storage with it. */
@@ -111,6 +119,14 @@ public class WrappedDataWatcher implements Iterable<WrappedWatchableObject> {
         return this;
     }
 
+    /** ProtocolLib-compatible object/serializer overload. */
+    public void setObject(WrappedDataWatcherObject object, Object value) {
+        if (object == null) {
+            throw new IllegalArgumentException("data watcher object cannot be null");
+        }
+        setObject(object.getIndex(), object.getSerializer().getEntityDataType(), value);
+    }
+
     public WrappedDataWatcher remove(int index) {
         handle.removeIf(data -> data.getIndex() == index);
         return this;
@@ -138,7 +154,12 @@ public class WrappedDataWatcher implements Iterable<WrappedWatchableObject> {
     }
 
     /** The live PacketEvents list. Mutating it mutates the packet. */
-    public List<EntityData<?>> getHandle() {
+    public Object getHandle() {
+        return handle;
+    }
+
+    /** PacketEvents-typed view used internally by converters. */
+    public List<EntityData<?>> getEntityDataList() {
         return handle;
     }
 
@@ -191,7 +212,7 @@ public class WrappedDataWatcher implements Iterable<WrappedWatchableObject> {
 
         @Override
         public Object getGeneric(WrappedDataWatcher specific) {
-            return specific == null ? null : specific.getHandle();
+            return specific == null ? null : specific.getEntityDataList();
         }
 
         @Override
@@ -204,4 +225,116 @@ public class WrappedDataWatcher implements Iterable<WrappedWatchableObject> {
             return List.class;
         }
     };
+
+    /** PacketEvents serializer wrapper retained for ProtocolLib source/binary compatibility. */
+    public static class Serializer {
+        private final EntityDataType<?> handle;
+        private final Class<?> type;
+
+        public Serializer(EntityDataType<?> handle) {
+            this(handle, inferJavaType(handle));
+        }
+
+        public Serializer(Object handle) {
+            this(handle instanceof EntityDataType ? (EntityDataType<?>) handle : null);
+        }
+
+        public Serializer(Class<?> type, Object handle, boolean supported) {
+            this(handle instanceof EntityDataType ? (EntityDataType<?>) handle : null, type);
+        }
+
+        private Serializer(EntityDataType<?> handle, Class<?> type) {
+            this.handle = handle;
+            this.type = type;
+        }
+
+        public Object getHandle() {
+            return handle;
+        }
+
+        public Class<?> getType() {
+            return type;
+        }
+
+        public boolean isSupported() {
+            return handle != null;
+        }
+
+        EntityDataType<?> getEntityDataType() {
+            return handle;
+        }
+    }
+
+    /** Registry facade for common metadata serializers. */
+    public static final class Registry {
+        private Registry() {
+        }
+
+        public static Serializer get(Class<?> type) {
+            if (type == null) return null;
+            if (type == Byte.class || type == byte.class) return new Serializer(EntityDataTypes.BYTE);
+            if (type == Short.class || type == short.class) return new Serializer(EntityDataTypes.SHORT);
+            if (type == Integer.class || type == int.class) return new Serializer(EntityDataTypes.INT);
+            if (type == Long.class || type == long.class) return new Serializer(EntityDataTypes.LONG);
+            if (type == Float.class || type == float.class) return new Serializer(EntityDataTypes.FLOAT);
+            if (type == Boolean.class || type == boolean.class) return new Serializer(EntityDataTypes.BOOLEAN);
+            if (type == String.class) return new Serializer(EntityDataTypes.STRING);
+            if (type == Component.class) return new Serializer(EntityDataTypes.ADV_COMPONENT);
+            if (type == ItemStack.class || type.getName().equals("org.bukkit.inventory.ItemStack")) {
+                return new Serializer(EntityDataTypes.ITEMSTACK);
+            }
+            return null;
+        }
+
+        public static Serializer fromHandle(Object handle) {
+            return handle instanceof EntityDataType ? new Serializer((EntityDataType<?>) handle) : null;
+        }
+
+        public static Serializer getChatComponentSerializer() {
+            return new Serializer(EntityDataTypes.ADV_COMPONENT);
+        }
+
+        public static Serializer getChatComponentSerializer(boolean optional) {
+            return new Serializer(optional ? EntityDataTypes.OPTIONAL_ADV_COMPONENT : EntityDataTypes.ADV_COMPONENT);
+        }
+
+        public static Serializer getItemStackSerializer(boolean optional) {
+            return new Serializer(optional ? EntityDataTypes.OPTIONAL_ITEMSTACK : EntityDataTypes.ITEMSTACK);
+        }
+    }
+
+    /** Pair of an entity metadata index and its serializer. */
+    public static class WrappedDataWatcherObject {
+        private int index;
+        private Serializer serializer;
+
+        public WrappedDataWatcherObject(int index, Serializer serializer) {
+            this.index = index;
+            this.serializer = serializer;
+        }
+
+        public int getIndex() {
+            return index;
+        }
+
+        public Serializer getSerializer() {
+            return serializer;
+        }
+
+        public Object getHandle() {
+            return this;
+        }
+    }
+
+    private static Class<?> inferJavaType(EntityDataType<?> type) {
+        if (type == EntityDataTypes.BYTE) return Byte.class;
+        if (type == EntityDataTypes.SHORT) return Short.class;
+        if (type == EntityDataTypes.INT) return Integer.class;
+        if (type == EntityDataTypes.LONG) return Long.class;
+        if (type == EntityDataTypes.FLOAT) return Float.class;
+        if (type == EntityDataTypes.BOOLEAN) return Boolean.class;
+        if (type == EntityDataTypes.STRING || type == EntityDataTypes.COMPONENT) return String.class;
+        if (type == EntityDataTypes.ADV_COMPONENT) return Component.class;
+        return Object.class;
+    }
 }

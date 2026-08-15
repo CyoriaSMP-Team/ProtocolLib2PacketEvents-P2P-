@@ -36,6 +36,53 @@ public abstract class PacketAdapter implements PacketListener {
     private final ListeningWhitelist sendingWhitelist;
     private final ListeningWhitelist receivingWhitelist;
 
+    /**
+     * ProtocolLib's builder spelling is intentionally retained, including the historical
+     * {@code AdapterParameteters} typo, because several released plugins link to it directly.
+     */
+    public static AdapterParameteters params() {
+        return new AdapterParameteters();
+    }
+
+    public static AdapterParameteters params(PacketType... types) {
+        return new AdapterParameteters().types(types);
+    }
+
+    public static final class AdapterParameteters {
+        private Plugin plugin;
+        private ListenerPriority priority = ListenerPriority.NORMAL;
+        private ConnectionSide side = ConnectionSide.BOTH;
+        private PacketType[] types = new PacketType[0];
+
+        public AdapterParameteters plugin(Plugin plugin) {
+            this.plugin = plugin;
+            return this;
+        }
+
+        public AdapterParameteters listenerPriority(ListenerPriority priority) {
+            this.priority = priority == null ? ListenerPriority.NORMAL : priority;
+            return this;
+        }
+
+        public AdapterParameteters connectionSide(ConnectionSide side) {
+            this.side = side == null ? ConnectionSide.BOTH : side;
+            return this;
+        }
+
+        public AdapterParameteters types(PacketType... types) {
+            this.types = types == null ? new PacketType[0] : types.clone();
+            return this;
+        }
+
+        public AdapterParameteters optionAsync() {
+            return this;
+        }
+
+        public AdapterParameteters optionManualGamePhase() {
+            return this;
+        }
+    }
+
     public PacketAdapter(Plugin plugin, PacketType... types) {
         this(plugin, ListenerPriority.NORMAL, ConnectionSide.BOTH, types);
     }
@@ -67,6 +114,20 @@ public abstract class PacketAdapter implements PacketListener {
         this.receivingWhitelist = side.isForClient()
                 ? new ListeningWhitelist(priority, clientTypes)
                 : ListeningWhitelist.EMPTY;
+    }
+
+    public PacketAdapter(AdapterParameteters parameters) {
+        this(requireParameters(parameters).plugin,
+                parameters.priority,
+                parameters.side,
+                parameters.types);
+    }
+
+    private static AdapterParameteters requireParameters(AdapterParameteters parameters) {
+        if (parameters == null || parameters.plugin == null) {
+            throw new IllegalArgumentException("PacketAdapter parameters and plugin cannot be null");
+        }
+        return parameters;
     }
 
     @Override

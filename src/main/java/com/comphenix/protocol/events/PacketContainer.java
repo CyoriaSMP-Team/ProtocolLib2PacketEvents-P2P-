@@ -28,6 +28,8 @@ import com.comphenix.protocol.wrappers.EnumWrappers;
 import com.comphenix.protocol.wrappers.WrappedChatComponent;
 import com.comphenix.protocol.wrappers.WrappedDataWatcher;
 import com.comphenix.protocol.wrappers.WrappedGameProfile;
+import com.comphenix.protocol.wrappers.ChunkCoordIntPair;
+import com.comphenix.protocol.wrappers.WrappedDataValue;
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
@@ -36,6 +38,8 @@ import com.github.retrooper.packetevents.protocol.item.ItemStack;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.wrapper.PacketTypeData;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
+import com.github.retrooper.packetevents.protocol.entity.type.EntityType;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -91,7 +95,12 @@ public class PacketContainer {
     }
 
     /** The underlying PacketEvents wrapper, or {@code null} for an unwrapped packet type. */
-    public PacketWrapper<?> getHandle() {
+    public Object getHandle() {
+        return handle;
+    }
+
+    /** Internal PacketEvents-typed access used by the bridge itself. */
+    public PacketWrapper<?> getPacketWrapper() {
         return handle;
     }
 
@@ -137,6 +146,11 @@ public class PacketContainer {
         return new StructureModifier<>(handle, float.class);
     }
 
+    /** Singular alias present in older ProtocolLib releases. */
+    public StructureModifier<Float> getFloat() {
+        return getFloats();
+    }
+
     public StructureModifier<Double> getDoubles() {
         return new StructureModifier<>(handle, double.class);
     }
@@ -157,6 +171,10 @@ public class PacketContainer {
         return new StructureModifier<>(handle, byte[].class);
     }
 
+    public StructureModifier<String[]> getStringArrays() {
+        return new StructureModifier<>(handle, String[].class);
+    }
+
     public StructureModifier<int[]> getIntegerArrays() {
         return new StructureModifier<>(handle, int[].class);
     }
@@ -164,6 +182,13 @@ public class PacketContainer {
     /** Every {@code List} field on the packet, untyped. */
     public StructureModifier<List<?>> getLists() {
         return new StructureModifier<>(handle, List.class);
+    }
+
+    public StructureModifier<List<Integer>> getIntLists() {
+        @SuppressWarnings("unchecked")
+        StructureModifier<List<Integer>> result = (StructureModifier<List<Integer>>) (StructureModifier<?>)
+                new StructureModifier<>(handle, List.class);
+        return result;
     }
 
     // --- converted modifiers ----------------------------------------------------------
@@ -202,6 +227,55 @@ public class PacketContainer {
      */
     public StructureModifier<WrappedDataWatcher> getDataWatcherModifier() {
         return convert(WrappedDataWatcher.getConverter());
+    }
+
+    /** Entity metadata values introduced by Minecraft 1.19.3. */
+    @SuppressWarnings("unchecked")
+    public StructureModifier<List<WrappedDataValue>> getDataValueCollectionModifier() {
+        return (StructureModifier<List<WrappedDataValue>>) (StructureModifier<?>)
+                new StructureModifier<>(handle, List.class, DataValueListConverter.INSTANCE);
+    }
+
+    /** Alias used by plugins that refer to a single metadata collection modifier. */
+    public StructureModifier<List<WrappedDataValue>> getDataValueModifier() {
+        return getDataValueCollectionModifier();
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<WrappedChatComponent[]> getChatComponentArrays() {
+        return (StructureModifier<WrappedChatComponent[]>) (StructureModifier<?>)
+                new StructureModifier<>(handle, net.kyori.adventure.text.Component[].class,
+                        ChatComponentArrayConverter.INSTANCE);
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<ChunkCoordIntPair> getChunkCoordIntPairs() {
+        return (StructureModifier<ChunkCoordIntPair>) (StructureModifier<?>)
+                new StructureModifier<>(handle, long.class, ChunkCoordIntPair.getConverter());
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<org.bukkit.entity.EntityType> getEntityTypeModifier() {
+        return (StructureModifier<org.bukkit.entity.EntityType>) (StructureModifier<?>)
+                new StructureModifier<>(handle, EntityType.class, EntityTypeConverter.INSTANCE);
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<List<org.bukkit.inventory.MerchantRecipe>> getMerchantRecipeLists() {
+        return (StructureModifier<List<org.bukkit.inventory.MerchantRecipe>>) (StructureModifier<?>)
+                new StructureModifier<>(handle, List.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<List<org.bukkit.inventory.ItemStack>> getItemListModifier() {
+        return (StructureModifier<List<org.bukkit.inventory.ItemStack>>) (StructureModifier<?>)
+                new StructureModifier<>(handle, List.class, ItemStackListConverter.INSTANCE);
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructureModifier<org.bukkit.util.Vector> getVectors() {
+        return (StructureModifier<org.bukkit.util.Vector>) (StructureModifier<?>)
+                new StructureModifier<>(handle, org.bukkit.util.Vector.class);
     }
 
     public StructureModifier<EnumWrappers.Hand> getHands() {
@@ -347,5 +421,102 @@ public class PacketContainer {
                         return ItemStack.class;
                     }
                 };
+    }
+
+    private static final class DataValueListConverter implements EquivalentConverter<List<WrappedDataValue>> {
+        private static final DataValueListConverter INSTANCE = new DataValueListConverter();
+
+        @Override
+        public List<WrappedDataValue> getSpecific(Object generic) {
+            if (!(generic instanceof List<?>)) return null;
+            List<WrappedDataValue> out = new java.util.ArrayList<>();
+            for (Object value : (List<?>) generic) {
+                out.add(value instanceof WrappedDataValue ? (WrappedDataValue) value
+                        : new WrappedDataValue(value));
+            }
+            return out;
+        }
+
+        @Override
+        public Object getGeneric(List<WrappedDataValue> specific) {
+            if (specific == null) return null;
+            List<Object> out = new java.util.ArrayList<>(specific.size());
+            for (WrappedDataValue value : specific) {
+                out.add(value == null ? null : value.getHandle());
+            }
+            return out;
+        }
+
+        @Override public Class<List<WrappedDataValue>> getSpecificType() { return (Class) List.class; }
+        @Override public Class<?> getGenericType() { return List.class; }
+    }
+
+    private static final class ItemStackListConverter implements EquivalentConverter<List<org.bukkit.inventory.ItemStack>> {
+        private static final ItemStackListConverter INSTANCE = new ItemStackListConverter();
+
+        @Override
+        public List<org.bukkit.inventory.ItemStack> getSpecific(Object generic) {
+            if (!(generic instanceof List<?>)) return null;
+            List<org.bukkit.inventory.ItemStack> out = new java.util.ArrayList<>();
+            for (Object value : (List<?>) generic) {
+                out.add(value instanceof ItemStack ? SpigotConversionUtil.toBukkitItemStack((ItemStack) value)
+                        : (org.bukkit.inventory.ItemStack) value);
+            }
+            return out;
+        }
+
+        @Override
+        public Object getGeneric(List<org.bukkit.inventory.ItemStack> specific) {
+            if (specific == null) return null;
+            List<ItemStack> out = new java.util.ArrayList<>(specific.size());
+            for (org.bukkit.inventory.ItemStack value : specific) {
+                out.add(value == null ? null : SpigotConversionUtil.fromBukkitItemStack(value));
+            }
+            return out;
+        }
+
+        @Override public Class<List<org.bukkit.inventory.ItemStack>> getSpecificType() { return (Class) List.class; }
+        @Override public Class<?> getGenericType() { return List.class; }
+    }
+
+    private static final class ChatComponentArrayConverter implements EquivalentConverter<WrappedChatComponent[]> {
+        private static final ChatComponentArrayConverter INSTANCE = new ChatComponentArrayConverter();
+
+        @Override
+        public WrappedChatComponent[] getSpecific(Object generic) {
+            if (!(generic instanceof Object[])) return null;
+            Object[] values = (Object[]) generic;
+            WrappedChatComponent[] out = new WrappedChatComponent[values.length];
+            for (int i = 0; i < values.length; i++) out[i] = WrappedChatComponent.fromHandle(values[i]);
+            return out;
+        }
+
+        @Override
+        public Object getGeneric(WrappedChatComponent[] specific) {
+            if (specific == null) return null;
+            net.kyori.adventure.text.Component[] out = new net.kyori.adventure.text.Component[specific.length];
+            for (int i = 0; i < specific.length; i++) out[i] = specific[i] == null ? null : specific[i].getComponent();
+            return out;
+        }
+
+        @Override public Class<WrappedChatComponent[]> getSpecificType() { return WrappedChatComponent[].class; }
+        @Override public Class<?> getGenericType() { return net.kyori.adventure.text.Component[].class; }
+    }
+
+    private static final class EntityTypeConverter implements EquivalentConverter<org.bukkit.entity.EntityType> {
+        private static final EntityTypeConverter INSTANCE = new EntityTypeConverter();
+
+        @Override
+        public org.bukkit.entity.EntityType getSpecific(Object generic) {
+            return generic instanceof EntityType ? SpigotConversionUtil.toBukkitEntityType((EntityType) generic) : null;
+        }
+
+        @Override
+        public Object getGeneric(org.bukkit.entity.EntityType specific) {
+            return specific == null ? null : SpigotConversionUtil.fromBukkitEntityType(specific);
+        }
+
+        @Override public Class<org.bukkit.entity.EntityType> getSpecificType() { return org.bukkit.entity.EntityType.class; }
+        @Override public Class<?> getGenericType() { return EntityType.class; }
     }
 }

@@ -1,12 +1,13 @@
 # ProtocolLib2PacketEvents (P2P)
 
-A drop-in [ProtocolLib](https://github.com/dmulloy2/ProtocolLib) compatibility layer powered by
+A ProtocolLib-compatible [ProtocolLib](https://github.com/dmulloy2/ProtocolLib) compatibility layer powered by
 [PacketEvents](https://github.com/retrooper/packetevents).
 
-P2P re-implements ProtocolLib's public API — same `com.comphenix.protocol.*` package names, same
-class and constant names — on top of PacketEvents. Plugins already compiled against ProtocolLib
-link and run against this without recompiling, while the actual packet interception is done by
-PacketEvents.
+P2P re-implements the high-value ProtocolLib API used by the server's installed plugins — same
+`com.comphenix.protocol.*` package names, class names, and packet constants — on top of PacketEvents.
+Plugins already compiled against the covered ProtocolLib surface link without recompiling, while the
+actual packet interception is done by PacketEvents. It is intentionally not an NMS-compatible fork
+of every internal ProtocolLib class.
 
 ## Why this can exist
 
@@ -34,7 +35,7 @@ API bucket. The `paper-api` version in `pom.xml` is a compile-time surface only 
 
 ```bash
 mvn package
-# -> target/ProtocolLib2PacketEvents-1.0.0.jar
+# -> target/ProtocolLib2PacketEvents-1.0.2.jar
 ```
 
 Drop the jar in `plugins/` alongside PacketEvents. `plugin.yml` declares `provides: [ProtocolLib]`,
@@ -57,7 +58,7 @@ therefore **generates** `PacketType.java` at build time:
    `target/generated-sources/packettypes`, which `build-helper-maven-plugin` adds as a source root.
 
 Bumping the PacketEvents dependency refreshes the constant set automatically. The current build
-generates **288 PacketEvents constants + 126 ProtocolLib-named aliases = 414 fields**.
+generates **288 PacketEvents constants + 127 ProtocolLib-named aliases = 415 fields**.
 
 ### Name aliases
 
@@ -89,18 +90,21 @@ are both emitted.
 ## What is implemented
 
 - **`ProtocolManager`** — add/remove listeners, `sendServerPacket`, `broadcastServerPacket`,
-  `receiveClientPacket`, `createPacket`, `getEntityFromID`, `getListeningTypes`
+  `receiveClientPacket` plus the historical `recieveClientPacket` overloads, asynchronous-manager
+  access, `createPacket`, `getEntityFromID`, `getListeningTypes`
 - **Listener plumbing** — `PacketAdapter`, `PacketListener`, `PacketEvent`, `ListeningWhitelist`,
   `ListenerPriority`, `ConnectionSide`, with ProtocolLib's priority ordering (low first, MONITOR
   last)
-- **`PacketContainer`** with typed accessors: `getIntegers()`, `getStrings()`, `getBytes()`,
-  `getUUIDs()`, `getByteArrays()`, `getItemModifier()`, `getChatComponents()`,
-  `getBlockPositionModifier()`, `getGameProfiles()`, `getDataWatcherModifier()`, `getHands()`,
-  `getItemSlots()`, `getDirections()`, and `convert(...)` for custom converters
-- **Wrappers** — `WrappedChatComponent` (Adventure-backed), `WrappedGameProfile` (`UserProfile`),
-  `BlockPosition` (`Vector3i`), `WrappedDataWatcher` / `WrappedWatchableObject` (`EntityData`),
-  `EnumWrappers`
-- **`AsynchronousManager`** — a real worker pool with per-player serial ordering
+- **`PacketContainer`** with primitive, item, chat, profile, entity-type, chunk-coordinate,
+  merchant/item-list, and 1.19.3+ DataValue/DataWatcher modifiers. `getHandle()` keeps the
+  ProtocolLib `Object` descriptor; `getPacketWrapper()` is the PacketEvents-typed bridge method.
+- **Wrappers** — `WrappedChatComponent` (Adventure-backed), `WrappedGameProfile`/signed properties,
+  `BlockPosition`, `ChunkCoordIntPair`, `WrappedDataWatcher`, `WrappedDataValue`,
+  `WrappedWatchableObject`, and serializer registry facades.
+- **Reflection compatibility** — the legacy `FuzzyReflection`, `FieldUtils`, `MethodUtils`,
+  accessor, `MinecraftReflection`, and `StreamSerializer` methods used by the installed plugins.
+- **`AsynchronousManager`** — a real worker pool with per-player serial ordering plus legacy
+  `AsyncListenerHandler`/`AsyncMarker` handles.
 - **Raw fallback** — 12 packet types have no PacketEvents wrapper; those still dispatch to
   listeners and can be cancelled, with `getRawBuffer()` for byte-level access. Check
   `hasStructuredAccess()` first.
@@ -127,8 +131,10 @@ These are real behavioural differences, not TODOs to gloss over:
    packets that have no Bukkit `Player` yet are not dispatched.
 5. **NMS types are never exposed.** Anything expecting a literal NMS handle out of
    `getModifier().read(...)` gets a PacketEvents object instead.
-6. **Not every ProtocolLib class exists.** `PacketContainer`/`ProtocolManager`/wrapper coverage is
-   broad but not exhaustive; less common utility classes are absent.
+6. **Not every ProtocolLib class exists.** The compatibility surface is broad and is verified
+   against the installed FastLogin, QuickShop-Hikari, ExcellentCrates, PlayerWarps,
+   ExcellentEnchants, BetterRTP, GrimAC, and zMenu binaries, but less common ProtocolLib utility,
+   NBT, timing, and internal injector classes remain outside this PacketEvents bridge.
 
 ## Implementation notes
 

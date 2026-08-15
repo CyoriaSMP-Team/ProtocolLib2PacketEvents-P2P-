@@ -72,9 +72,21 @@ public class WrappedChatComponent {
         return AdventureSerializer.toLegacyFormat(handle);
     }
 
-    /** The underlying Adventure component PacketEvents stores. */
-    public Component getHandle() {
+    /**
+     * The underlying handle. ProtocolLib declares this method as returning Object; keeping that
+     * descriptor is important because Java's covariant source return type is not binary compatible.
+     */
+    public Object getHandle() {
         return handle;
+    }
+
+    /** PacketEvents-typed view used by this bridge's converter. */
+    public Component getComponent() {
+        return handle;
+    }
+
+    public static WrappedChatComponent fromHandle(Object handle) {
+        return handle instanceof Component ? fromComponent((Component) handle) : null;
     }
 
     @Override
@@ -99,12 +111,12 @@ public class WrappedChatComponent {
     private static final EquivalentConverter<WrappedChatComponent> CONVERTER = new EquivalentConverter<>() {
         @Override
         public WrappedChatComponent getSpecific(Object generic) {
-            return fromComponent((Component) generic);
+            return fromHandle(generic);
         }
 
         @Override
         public Object getGeneric(WrappedChatComponent specific) {
-            return specific == null ? null : specific.getHandle();
+            return specific == null ? null : specific.getComponent();
         }
 
         @Override
